@@ -364,7 +364,7 @@ const DOCS=[
  {id:'roster',grp:'stu',t:'كشف طلاب الفصل',ctx:'class',icon:'list'},
  {id:'att_sheet',grp:'stu',t:'كشف رصد الحضور اليومي',ctx:'class',icon:'check'},
  {id:'leave_pos',grp:'stu',t:'إذن استئذان (طابعة إيصالات)',ctx:'leave',icon:'receipt'},
- {id:'student_full',grp:'stu',t:'الاستعلام الشامل عن طالب',ctx:'student',icon:'user'},
+ {id:'student_full',grp:'stu',t:'التقرير الشامل عن الطالب',ctx:'student',icon:'user'},
  {id:'timetable',grp:'stu',t:'الجدول الدراسي',ctx:'timetable',icon:'grid'},
  {id:'teachers_list',grp:'stf',t:'كشف بيانات المعلمين',ctx:'none',icon:'users'},
  {id:'staff_stats',grp:'stf',t:'إحصاءات الموظف',ctx:'staff',icon:'chart'},
@@ -562,17 +562,61 @@ function docRoster(cls,withMarks){const list=students().filter(s=>String(s.cls)=
  const pages=chunk(list,25);return pages.map((part,pi)=>docPage(docHead(withMarks?'كشف رصد الحضور اليومي':'كشف طلاب الفصل',`<span>المرحلة: <b>${esc(S.settings.stage)}</b></span><span>الصف: <b>${esc(c.grade||'')}</b></span><span>الفصل: <b>${esc(cls)}</b></span><span>عدد الطلاب: <b>${list.length}</b></span>${withMarks?'<span>اليوم: ......... التاريخ: ....../....../......</span>':''}`)+
   `<table><thead><tr><th class="c" style="width:9mm">م</th><th>اسم الطالب</th><th class="c" style="width:28mm">رقم الهوية</th>${withMarks?'<th class="c" style="width:16mm">حاضر</th><th class="c" style="width:16mm">غائب</th><th class="c" style="width:16mm">متأخر</th>':'<th style="width:55mm">الملاحظات</th>'}</tr></thead><tbody>${part.map((s,i)=>`<tr><td class="c">${pi*25+i+1}</td><td>${esc(s.name)}</td><td class="c">${esc(s.nid)}</td>${withMarks?'<td></td><td></td><td></td>':'<td></td>'}</tr>`).join('')}</tbody></table>`+
   signBlock([['رائد الفصل',''],['وكيل شؤون الطلاب',S.settings.deputy],['مدير المدرسة',S.settings.principal]]),`${pi+1} / ${pages.length}`))}
-function docStudentFull(st){const a=absStats(st.nid),beh=S.behavior.filter(b=>String(b.nid)===String(st.nid)),lv=S.leaves.filter(l=>String(l.nid)===String(st.nid));
+// flow blocks into A4 pages by measuring them (tables are split by rows, header repeated)
+function flowPages(title,meta,blocks){
+ const host=document.createElement('div');host.style.cssText='position:absolute;left:-9999px;top:0;visibility:hidden';document.body.appendChild(host);
+ host.innerHTML=`<div class="page"><div class="doc" id="fp-doc">${docHead(title,meta)}</div></div>`;const doc=host.querySelector('#fp-doc');
+ const mm=host.querySelector('.page').offsetHeight/297;const limit=(297-16)*mm-12*mm; // page minus bottom padding/foot
+ const pages=[];let cur=docHead(title,meta);doc.innerHTML=cur;
+ const fits=html=>{doc.innerHTML=cur+html;return doc.scrollHeight<=limit};
+ const push=()=>{pages.push(cur);cur=docHead(title,meta);doc.innerHTML=cur};
+ for(const b of blocks){
+  if(typeof b==='string'){if(!fits(b)){push();}cur+=b;continue}
+  // table block: {h:heading html, head:[..], rows:[[..]], empty, style}
+  const th=`<thead><tr>${b.head.map(x=>`<th class="c"${x.w?` style="width:${x.w}"`:''}>${esc(x.t||x)}</th>`).join('')}</tr></thead>`;
+  const tbl=rows=>`${b.h}<table style="${b.style||''}">${th}<tbody>${rows.length?rows.map(r=>`<tr>${r.map((c,i)=>`<td class="${(b.left||[]).includes(i)?'':'c'}">${c}</td>`).join('')}</tr>`).join(''):`<tr><td colspan="${b.head.length}" class="c">${esc(b.empty||'لا توجد بيانات')}</td></tr>`}</tbody></table>`;
+  let rest=b.rows.slice();if(!rest.length){if(!fits(tbl([])))push();cur+=tbl([]);continue}
+  while(rest.length){let n=0;while(n<rest.length&&fits(tbl(rest.slice(0,n+1))))n++;
+   if(n===0){if(doc.innerHTML===docHead(title,meta)||cur===docHead(title,meta)){n=1}else{push();continue}}
+   cur+=tbl(rest.slice(0,n));rest=rest.slice(n);if(rest.length)push()}
+ }
+ pages.push(cur);host.remove();return pages.map((p,i)=>docPage(p,`${i+1} / ${pages.length}`))}
+function docStudentFull(st){const s=S.settings,a=absStats(st.nid),nid=String(st.nid);
+ const beh=S.behavior.filter(b=>String(b.nid)===nid).sort((x,y)=>(x.date||'')<(y.date||'')?-1:1);
+ const lv=S.leaves.filter(l=>String(l.nid)===nid).sort((x,y)=>((x.date||'')+(x.time||''))<((y.date||'')+(y.time||''))?-1:1);
+ const lateL=S.late.filter(l=>String(l.nid)===nid);
+ const att=S.attendance.filter(r=>String(r.nid)===nid);const days=new Set(att.map(r=>r.date)).size;const present=att.filter(r=>r.status==='حاضر').length;
+ const rate=days?Math.round(present/days*1000)/10:null;
  const ded=beh.reduce((t,b)=>t+(+b.ded||+(ruleOf(b.rule)||{}).ded||0),0);
- return [docPage(docHead('الاستعلام الشامل عن الطالب')+
- `<table><tbody><tr><th>اسم الطالب</th><td colspan="3"><b>${esc(st.name)}</b></td></tr><tr><th>رقم الهوية</th><td>${esc(st.nid)}</td><th>رقم الطالب</th><td>${esc(st.id||'')}</td></tr>
- <tr><th>الصف</th><td>${esc(st.grade)}</td><th>الفصل</th><td>${esc(st.cls)}</td></tr><tr><th>ولي الأمر</th><td>${esc(st.guardian||'')}</td><th>الجوال</th><td>${esc(st.phone||'')}</td></tr>
- <tr><th>الموجه الطلابي</th><td>${esc(counselorOf(st)||'')}</td><th>تاريخ الميلاد</th><td>${esc(st.dob||'')}</td></tr></tbody></table>
- <table><thead><tr><th class="c">غياب بدون عذر</th><th class="c">غياب بعذر</th><th class="c">تأخر</th><th class="c">أطول غياب متصل</th><th class="c">المخالفات</th><th class="c">الدرجات المحسومة</th><th class="c">الاستئذان</th></tr></thead>
- <tbody><tr><td class="c">${a.unN}</td><td class="c">${a.exN}</td><td class="c">${a.lateN}</td><td class="c">${a.consec}</td><td class="c">${beh.length}</td><td class="c">${ded}</td><td class="c">${lv.length}</td></tr></tbody></table>
- <div><b>المخالفات السلوكية</b></div><table><thead><tr><th class="c">التاريخ</th><th>المخالفة</th><th class="c">الدرجة</th><th class="c">التكرار</th><th>الإجراء</th></tr></thead><tbody>${beh.slice(-10).map(b=>`<tr><td class="c">${fmtG(b.date)}</td><td>${esc(b.text)}</td><td class="c">${esc(b.deg)}</td><td class="c">${b.rep||''}</td><td style="font-size:8.5pt">${esc((b.action||'').slice(0,90))}</td></tr>`).join('')||'<tr><td colspan="5" class="c">لا توجد مخالفات</td></tr>'}</tbody></table>
- <div><b>تواريخ الغياب</b>: ${a.un.map(x=>fmtG(x.date)).join('، ')||'—'}${a.exN?`<br><b>بعذر</b>: ${a.ex.map(x=>fmtG(x.date)).join('، ')}`:''}</div>`+
- signBlock([['الموجه الطلابي',counselorOf(st)],['وكيل شؤون الطلاب',S.settings.deputy],['مدير المدرسة',S.settings.principal]]))]}
+ const due=dueActions(st);const acts=S.actions.filter(x=>String(x.nid)===nid);
+ const cls=classes().find(c=>String(c.cls)===String(st.cls))||{};
+ const months={};att.forEach(r=>{const m=(r.date||'').slice(0,7);if(!m)return;months[m]=months[m]||{d:0,u:0,e:0,l:0};months[m].d++;if(r.status==='غائب'){r.type==='بعذر'?months[m].e++:months[m].u++}if(r.status==='متأخر')months[m].l++});
+ const MN=['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
+ const sched=S.schedule.filter(r=>String(r.cls)===String(st.cls));
+ const H=t=>`<div style="font-weight:700;color:#0E3A45;border-right:3pt solid #2793A4;padding-right:2mm;margin-top:1mm">${esc(t)}</div>`;
+ const meta=`<span>الطالب: <b>${esc(st.name)}</b></span><span>الصف: <b>${esc(st.grade)}</b></span><span>الفصل: <b>${esc(st.cls)}</b></span>`;
+ const absRows=[...a.un.map(x=>({...x,k:'بدون عذر'})),...a.ex.map(x=>({...x,k:'بعذر'})),...a.late.map(x=>({...x,k:'تأخر'})),...lateL.map(x=>({date:x.date,k:'تأخر',inT:x.inT,notes:(x.mins?x.mins+' دقيقة ':'')+(x.notes||'')}))].sort((x,y)=>x.date<y.date?-1:1);
+ const daysW=['الأحد','الاثنين','الثلاثاء','الأربعاء','الخميس'],maxP=Math.max(7,...sched.map(r=>+r.period||0));
+ const blocks=[
+  H('أولًا: البيانات الأساسية')+`<table><tbody>
+  <tr><th>اسم الطالب</th><td colspan="3"><b>${esc(st.name)}</b></td></tr>
+  <tr><th>رقم الهوية</th><td>${esc(st.nid)}</td><th>رقم الطالب</th><td>${esc(st.id||'')}</td></tr>
+  <tr><th>المرحلة</th><td>${esc(stageOf(st))}</td><th>الصف / الفصل</th><td>${esc(st.grade)} / ${esc(st.cls)}${cls.n?` (${cls.n} طالبًا)`:''}</td></tr>
+  <tr><th>تاريخ الميلاد</th><td>${esc(st.dob||'—')}</td><th>الحالة</th><td>${esc(st.status||'نشط')}</td></tr>
+  <tr><th>ولي الأمر</th><td>${esc(st.guardian||'—')}</td><th>جوال ولي الأمر</th><td dir="ltr" style="text-align:right">${esc(st.phone||'—')}</td></tr>
+  <tr><th>الموجه الطلابي</th><td>${esc(counselorOf(st)||'—')}</td><th>البريد الوزاري</th><td>${esc(st.email||'—')}</td></tr></tbody></table>`,
+  {h:H('ثانيًا: ملخص المواظبة والسلوك'),head:['أيام مرصودة','نسبة الحضور','غياب بدون عذر','غياب بعذر','أطول غياب متصل','تأخر','استئذان','مخالفات','درجات محسومة'],rows:[[days,rate==null?'—':rate+'%',`<b>${a.unN}</b>`,a.exN,a.consec,a.lateN+lateL.length,lv.length,beh.length,ded]]},
+  {h:H('ثالثًا: الحضور والغياب حسب الشهر'),head:['الشهر','أيام مرصودة','بدون عذر','بعذر','تأخر'],rows:Object.keys(months).sort().map(m=>{const [y,mm]=m.split('-');const v=months[m];return[`${MN[+mm-1]} ${y}`,v.d,v.u,v.e,v.l]}),empty:'لا توجد سجلات حضور'},
+  {h:H('رابعًا: إجراءات المواظبة'),head:['الإجراء','تاريخ الاستحقاق','الحالة'],rows:[...due.map(d=>[esc(d.label),fmtG(d.date),'مستحق']),...acts.filter(x=>!due.some(d=>d.label===x.label)).map(x=>[esc(x.label),fmtG(x.date),esc(x.status||'')])],empty:'لا توجد إجراءات مستحقة'},
+  {h:H(`خامسًا: سجل الغياب والتأخر (${absRows.length})`),head:['م','التاريخ','اليوم','هجري','النوع','وقت الدخول','ملاحظات'],rows:absRows.map((r,i)=>[i+1,fmtG(r.date),dayName(r.date),fmtH(r.date),r.k==='بدون عذر'?`<b>${r.k}</b>`:r.k,esc(r.inT||''),esc(r.notes||'')]),empty:'لا يوجد غياب أو تأخر مسجل'},
+  {h:H(`سادسًا: المخالفات السلوكية (${beh.length})`),style:'font-size:8.8pt',left:[2,6],head:[{t:'م',w:'7mm'},{t:'التاريخ',w:'19mm'},{t:'المخالفة',w:'48mm'},{t:'الدرجة',w:'14mm'},{t:'التكرار',w:'11mm'},{t:'الحسم',w:'10mm'},'الإجراء المتخذ'],
+   rows:beh.map((b,i)=>{const r=ruleOf(b.rule)||{};return[i+1,fmtG(b.date)+(b.time?'<br>'+esc(b.time):''),esc(b.text)+(b.notes?`<br><span style="color:#555">ملاحظة: ${esc(b.notes)}</span>`:''),esc(b.deg),b.rep||1,esc(b.ded||r.ded||''),`<span style="font-size:8pt">${esc(b.action||'')}</span>`+(b.notified?'<br>✔ تم إشعار ولي الأمر':'')]}),empty:'لا توجد مخالفات سلوكية مسجلة'},
+  {h:H(`سابعًا: الاستئذان (${lv.length})`),head:['رقم','التاريخ','الوقت','نوع الإذن','السبب','المستلم','الحصة','المعلم / المادة'],rows:lv.map(l=>[l.no,fmtG(l.date),esc(l.time||''),esc(l.type||''),esc(l.reason||''),esc(l.receiver||''),esc(l.period||''),esc([l.teacher,l.subject].filter(Boolean).join(' / '))]),empty:'لا يوجد استئذان مسجل'},
+  H('ثامنًا: الجدول الدراسي لفصل الطالب')+(sched.length?`<table style="font-size:8.5pt"><thead><tr><th class="c">اليوم</th>${Array.from({length:maxP},(_,i)=>`<th class="c">${i+1}</th>`).join('')}</tr></thead><tbody>${daysW.map(d=>`<tr><th class="c">${d}</th>${Array.from({length:maxP},(_,i)=>{const r=sched.find(x=>x.day===d&&+x.period===i+1);return `<td class="c">${r?`<b>${esc(r.subject)}</b><br><span style="font-size:7.5pt">${esc(r.teacher)}</span>`:''}</td>`}).join('')}</tr>`).join('')}</tbody></table>`:'<div>لا يوجد جدول مسجل لهذا الفصل</div>'),
+  H('ملاحظات الموجه الطلابي')+'<div style="border:.6pt solid #b9cdd0;height:26mm"></div>',
+  `<div style="font-size:8.5pt;color:#555">أُعد هذا التقرير آليًا من نظام شؤون الطلاب بتاريخ ${esc(fmtD(todayISO()))} الساعة ${nowHM()}${ME?' بواسطة '+esc(ME.name||ME.username):''}.</div>`+signBlock([['الموجه الطلابي',counselorOf(st)],['وكيل شؤون الطلاب',s.deputy],['مدير المدرسة',s.principal]]).replace('margin-top:auto','')
+ ];
+ return flowPages('التقرير الشامل عن الطالب',meta,blocks)}
 function docTimetable(kind,key){const days=['الأحد','الاثنين','الثلاثاء','الأربعاء','الخميس'];const rows=S.schedule.filter(r=>kind==='cls'?String(r.cls)===String(key):r.teacher===key);
  const maxP=Math.max(7,...rows.map(r=>+r.period||0));
  return [docPage(docHead('الجدول الدراسي',`<span>${kind==='cls'?'الفصل':'المعلم'}: <b>${esc(key)}</b></span><span>عدد الحصص: <b>${rows.length}</b></span>`)+
@@ -862,7 +906,7 @@ function studentFile(s){const a=absStats(s.nid),beh=S.behavior.filter(b=>String(
  ${due.length?`<div class="card card-b"><b>إجراءات مستحقة:</b><div class="row" style="margin-top:8px">${due.map(d=>`<button class="btn sm" data-pf="${d.form}">${icon('printer')} ${esc(d.label)} · ${fmtG(d.date)}</button>`).join('')}</div></div>`:''}
  <div class="card"><div class="card-h"><h2>المخالفات</h2></div><div class="tbl-wrap"><table class="tbl"><thead><tr><th>التاريخ</th><th>المخالفة</th><th>الدرجة</th><th>التكرار</th><th></th></tr></thead><tbody>${beh.map(b=>`<tr><td class="num">${fmtG(b.date)}</td><td>${esc(b.text)}</td><td>${degPill(b.deg)}</td><td class="num">${b.rep||1}</td><td class="act"><button class="btn sm" data-inc="${b.id}">${icon('printer')} نماذج</button></td></tr>`).join('')||'<tr><td colspan="5" class="empty">لا توجد مخالفات</td></tr>'}</tbody></table></div></div>
  <div class="small muted">تواريخ الغياب بدون عذر: ${a.un.map(x=>fmtG(x.date)).join('، ')||'—'}</div>`,
- foot:`<button class="btn print" data-full>${icon('printer')} الاستعلام الشامل</button><button class="btn" data-pf="att_pledge">${icon('printer')} تعهد الحضور</button><button class="btn" data-close>إغلاق</button>`,
+ foot:`<button class="btn print" data-full>${icon('printer')} التقرير الشامل</button><button class="btn" data-pf="att_pledge">${icon('printer')} تعهد الحضور</button><button class="btn" data-close>إغلاق</button>`,
  onMount:(el,close)=>{$('[data-full]',el).onclick=()=>printForm('student_full',[{student:s}]);$$('[data-pf]',el).forEach(b=>b.onclick=()=>printForm(b.dataset.pf,[{student:s}]));$$('[data-inc]',el).forEach(b=>b.onclick=()=>incidentForms(S.behavior.find(x=>x.id===b.dataset.inc)))}})}
 
 // ---------- الحضور والمواظبة ----------
