@@ -407,7 +407,7 @@ function sha256(ascii){const K=[],H=[];let p=2,c=0;const isP=n=>{for(let f=2;f*f
 function hashPw(pw,salt){let h=sha256(salt+'|'+pw);for(let i=0;i<3000;i++)h=sha256(h+salt);return h}
 
 // ===================== storage (IndexedDB, falls back to memory) =====================
-const COLLS=['settings','users','roles','students','staff','schedule','attendance','behavior','leaves','late','actions','calendar','counselors','evals','staffAtt','audit','rules','evalRef','logo'];
+const COLLS=['settings','users','roles','students','staff','schedule','attendance','behavior','leaves','late','actions','calendar','counselors','evals','staffAtt','audit','rules','evalRef','logo','archive'];
 const S={};
 const DB={idb:null,
  async init(){
@@ -459,7 +459,7 @@ function audit(action,detail=''){S.audit.unshift({t:new Date().toISOString(),u:M
 
 // ===================== domain helpers =====================
 function scopeOK(st){if(!ME||!ME.scope||!ME.scope.length)return true;return ME.scope.includes(String(st.cls))}
-function students(){return S.students.filter(s=>s.status!=='منقول'&&scopeOK(s))}
+function students(){return S.students.filter(s=>!['منقول','منسحب','متخرج'].includes(s.status)&&scopeOK(s))}
 function stByNid(nid){return S.students.find(s=>String(s.nid)===String(nid))}
 function stFind(rec){return (rec.nid&&stByNid(rec.nid))||(rec.sid&&S.students.find(s=>s.id===rec.sid))||S.students.find(s=>norm(s.name)===norm(rec.name))}
 function classes(){const m=new Map();for(const s of students()){const k=String(s.cls||'');if(!m.has(k))m.set(k,{cls:k,grade:s.grade,sec:s.sec,n:0});m.get(k).n++}
@@ -613,7 +613,8 @@ function docStudentFull(st){const s=S.settings,a=absStats(st.nid),nid=String(st.
   {h:H(`سادسًا: المخالفات السلوكية (${beh.length})`),style:'font-size:8.8pt',left:[2,6],head:[{t:'م',w:'7mm'},{t:'التاريخ',w:'19mm'},{t:'المخالفة',w:'48mm'},{t:'الدرجة',w:'14mm'},{t:'التكرار',w:'11mm'},{t:'الحسم',w:'10mm'},'الإجراء المتخذ'],
    rows:beh.map((b,i)=>{const r=ruleOf(b.rule)||{};return[i+1,fmtG(b.date)+(b.time?'<br>'+esc(b.time):''),esc(b.text)+(b.notes?`<br><span style="color:#555">ملاحظة: ${esc(b.notes)}</span>`:''),esc(b.deg),b.rep||1,esc(b.ded||r.ded||''),`<span style="font-size:8pt">${esc(b.action||'')}</span>`+(b.notified?'<br>✔ تم إشعار ولي الأمر':'')]}),empty:'لا توجد مخالفات سلوكية مسجلة'},
   {h:H(`سابعًا: الاستئذان (${lv.length})`),head:['رقم','التاريخ','الوقت','نوع الإذن','السبب','المستلم','الحصة','المعلم / المادة'],rows:lv.map(l=>[l.no,fmtG(l.date),esc(l.time||''),esc(l.type||''),esc(l.reason||''),esc(l.receiver||''),esc(l.period||''),esc([l.teacher,l.subject].filter(Boolean).join(' / '))]),empty:'لا يوجد استئذان مسجل'},
-  H('ثامنًا: الجدول الدراسي لفصل الطالب')+(sched.length?`<table style="font-size:8.5pt"><thead><tr><th class="c">اليوم</th>${Array.from({length:maxP},(_,i)=>`<th class="c">${i+1}</th>`).join('')}</tr></thead><tbody>${daysW.map(d=>`<tr><th class="c">${d}</th>${Array.from({length:maxP},(_,i)=>{const r=sched.find(x=>x.day===d&&+x.period===i+1);return `<td class="c">${r?`<b>${esc(r.subject)}</b><br><span style="font-size:7.5pt">${esc(r.teacher)}</span>`:''}</td>`}).join('')}</tr>`).join('')}</tbody></table>`:'<div>لا يوجد جدول مسجل لهذا الفصل</div>'),
+  {h:H('ثامنًا: سجل الأعوام السابقة'),head:['العام','الصف','الفصل','غياب بدون عذر','غياب بعذر','تأخر','مخالفات','استئذان','النتيجة'],rows:(Array.isArray(S.archive)?S.archive:[]).map(y=>{const me=(y.students||[]).find(x=>String(x.nid)===nid);if(!me)return null;const at=(y.attendance||[]).filter(r=>String(r.nid)===nid);return[esc(y.year),esc(me.grade||''),esc(me.cls||''),at.filter(r=>r.status==='غائب'&&r.type!=='بعذر').length,at.filter(r=>r.status==='غائب'&&r.type==='بعذر').length,at.filter(r=>r.status==='متأخر').length,(y.behavior||[]).filter(b=>String(b.nid)===nid).length,(y.leaves||[]).filter(l=>String(l.nid)===nid).length,esc(((st.history||[]).find(h=>h.year===y.year)||{}).result||'منقول للصف التالي')]}).filter(Boolean),empty:'لا توجد أعوام سابقة مؤرشفة لهذا الطالب'},
+  H('تاسعًا: الجدول الدراسي لفصل الطالب')+(sched.length?`<table style="font-size:8.5pt"><thead><tr><th class="c">اليوم</th>${Array.from({length:maxP},(_,i)=>`<th class="c">${i+1}</th>`).join('')}</tr></thead><tbody>${daysW.map(d=>`<tr><th class="c">${d}</th>${Array.from({length:maxP},(_,i)=>{const r=sched.find(x=>x.day===d&&+x.period===i+1);return `<td class="c">${r?`<b>${esc(r.subject)}</b><br><span style="font-size:7.5pt">${esc(r.teacher)}</span>`:''}</td>`}).join('')}</tr>`).join('')}</tbody></table>`:'<div>لا يوجد جدول مسجل لهذا الفصل</div>'),
   H('ملاحظات الموجه الطلابي')+'<div style="border:.6pt solid #b9cdd0;height:26mm"></div>',
   `<div style="font-size:8.5pt;color:#555">أُعد هذا التقرير آليًا من نظام شؤون الطلاب بتاريخ ${esc(fmtD(todayISO()))} الساعة ${nowHM()}${ME?' بواسطة '+esc(ME.name||ME.username):''}.</div>`+signBlock([['الموجه الطلابي',counselorOf(st)],['وكيل شؤون الطلاب',s.deputy],['مدير المدرسة',s.principal]]).replace('margin-top:auto','')
  ];
@@ -878,12 +879,12 @@ VIEWS.home=el=>{const t=todayISO(),st=students();const todayAbs=S.attendance.fil
 };
 
 // ---------- الطلاب والفصول ----------
-let STU_CLS='',STU_Q='';
+let STU_CLS='',STU_Q='',STU_ST='active';
 VIEWS.students=el=>{const cl=classes();
- const list=()=>students().filter(s=>(!STU_CLS||String(s.cls)===STU_CLS)&&(!STU_Q||norm(s.name).includes(norm(STU_Q))||String(s.nid).includes(STU_Q))).sort((a,b)=>gradeRank(a.grade)-gradeRank(b.grade)||String(a.cls).localeCompare(String(b.cls),'en',{numeric:true})||a.name.localeCompare(b.name,'ar'));
+ const list=()=>(STU_ST==='active'?students():S.students.filter(s=>s.status===STU_ST&&scopeOK(s))).filter(s=>(!STU_CLS||String(s.cls)===STU_CLS)&&(!STU_Q||norm(s.name).includes(norm(STU_Q))||String(s.nid).includes(STU_Q))).sort((a,b)=>gradeRank(a.grade)-gradeRank(b.grade)||String(a.cls).localeCompare(String(b.cls),'en',{numeric:true})||a.name.localeCompare(b.name,'ar'));
  el.innerHTML=`<div class="kpis">${cl.map(c=>`<button class="kpi" style="cursor:pointer;text-align:right;border-color:${STU_CLS===c.cls?'var(--moe-teal)':'var(--line)'}" data-cls="${esc(c.cls)}"><span class="v">${c.n}</span><span class="l">${esc(c.grade)} – فصل ${esc(c.cls)}</span></button>`).join('')}</div>
- <div class="card"><div class="card-h"><h2>سجل الطلاب</h2><div class="row"><input class="input" id="st-q" placeholder="بحث بالاسم أو الهوية" value="${esc(STU_Q)}" style="width:220px"><select class="input" id="st-cls" style="width:200px">${clsOptions(STU_CLS)}</select>
- ${can('students','print')?`<button class="btn" id="st-roster">${icon('printer')} كشف الفصل</button>`:''}${can('students','export')?`<button class="btn" id="st-x">${icon('download')} Excel</button>`:''}${can('students','add')?`<button class="btn pri" id="st-add">${icon('plus')} طالب</button>`:''}</div></div>
+ <div class="card"><div class="card-h"><h2>سجل الطلاب</h2><div class="row"><input class="input" id="st-q" placeholder="بحث بالاسم أو الهوية" value="${esc(STU_Q)}" style="width:220px"><select class="input" id="st-cls" style="width:200px">${clsOptions(STU_CLS)}</select><select class="input" id="st-st" style="width:150px">${[['active','الطلاب الحاليون'],['متخرج','المتخرجون'],['منقول','المنقولون'],['منسحب','المنسحبون']].map(([k,t])=>`<option value="${k}" ${STU_ST===k?'selected':''}>${t} (${k==='active'?students().length:S.students.filter(s=>s.status===k).length})</option>`).join('')}</select>
+ ${can('students','print')?`<button class="btn" id="st-roster">${icon('printer')} كشف الفصل</button>`:''}${can('students','export')?`<button class="btn" id="st-x">${icon('download')} Excel</button>`:''}${can('students','add')?`<button class="btn" id="st-new">${icon('upload')} مستجدون من Excel</button><button class="btn pri" id="st-add">${icon('plus')} طالب</button>`:''}</div></div>
  <div class="tbl-wrap" style="max-height:62vh"><table class="tbl"><thead><tr><th>#</th><th>اسم الطالب</th><th>الهوية</th><th>الصف</th><th>الفصل</th><th>ولي الأمر</th><th>الجوال</th><th>غياب</th><th>مخالفات</th><th></th></tr></thead><tbody id="st-body"></tbody></table></div></div>`;
  const body=$('#st-body',el);
  const draw=()=>{const L=list();body.innerHTML=L.slice(0,600).map((s,i)=>{const a=absStats(s.nid);const nb=S.behavior.filter(b=>String(b.nid)===String(s.nid)).length;
@@ -893,11 +894,11 @@ VIEWS.students=el=>{const cl=classes();
  $$('[data-cls]',el).forEach(b=>b.onclick=()=>{STU_CLS=STU_CLS===b.dataset.cls?'':b.dataset.cls;render()});
  if($('#st-roster',el))$('#st-roster',el).onclick=()=>STU_CLS?printForm('roster',[{cls:STU_CLS}]):startPrint('roster');
  if($('#st-x',el))$('#st-x',el).onclick=()=>exportXLSX('الطلاب',['اسم الطالب','الهوية','الصف','الفصل','ولي الأمر','الجوال'],list().map(s=>[s.name,s.nid,s.grade,s.cls,s.guardian,s.phone]));
- if($('#st-add',el))$('#st-add',el).onclick=()=>editStudent();
+ if($('#st-add',el))$('#st-add',el).onclick=()=>editStudent();if($('#st-new',el))$('#st-new',el).onclick=importNewStudents;$('#st-st',el).onchange=e=>{STU_ST=e.target.value;STU_CLS='';render()};
  body.onclick=e=>{const v=e.target.closest('[data-view]'),ed=e.target.closest('[data-edit]');if(v)studentFile(S.students.find(s=>s.id===v.dataset.view));if(ed)editStudent(S.students.find(s=>s.id===ed.dataset.edit))};
 };
-function editStudent(s){const isNew=!s;s=s||{id:uid(),status:'نشط',stage:S.settings.stage};const F=[['name','اسم الطالب'],['nid','رقم الهوية'],['grade','الصف'],['sec','رقم الفصل'],['cls','رمز الفصل'],['guardian','ولي الأمر'],['phone','الجوال'],['dob','تاريخ الميلاد']];
- modal({title:isNew?'إضافة طالب':'تعديل بيانات طالب',body:`<form id="f-st" class="form-grid">${F.map(([k,l])=>`<div class="field"><label for="fs-${k}">${l}</label><input class="input" id="fs-${k}" value="${esc(s[k]||'')}" ${k==='name'||k==='nid'?'required':''}></div>`).join('')}<div class="field"><label for="fs-status">الحالة</label><select class="input" id="fs-status">${['نشط','منقول','منسحب'].map(x=>`<option ${s.status===x?'selected':''}>${x}</option>`).join('')}</select></div></form>`,
+function editStudent(s){const isNew=!s;s=s||{id:uid(),status:'نشط',stage:S.settings.stage,grade:gradeLadder()[0]||'',joined:S.settings.year||''};const F=[['name','اسم الطالب'],['nid','رقم الهوية'],['grade','الصف'],['sec','رقم الفصل'],['cls','رمز الفصل'],['guardian','ولي الأمر'],['phone','الجوال'],['dob','تاريخ الميلاد']];
+ modal({title:isNew?'إضافة طالب':'تعديل بيانات طالب',body:`<form id="f-st" class="form-grid">${F.map(([k,l])=>`<div class="field"><label for="fs-${k}">${l}</label><input class="input" id="fs-${k}" value="${esc(s[k]||'')}" ${k==='name'||k==='nid'?'required':''}></div>`).join('')}<div class="field"><label for="fs-status">الحالة</label><select class="input" id="fs-status">${['نشط','منقول','منسحب','متخرج'].map(x=>`<option ${s.status===x?'selected':''}>${x}</option>`).join('')}</select></div></form>`,
   foot:`<button class="btn pri" data-save>حفظ</button>${!isNew&&can('students','delete')?'<button class="btn danger" data-del>حذف</button>':''}<button class="btn" data-close>إلغاء</button>`,
   onMount:(el,close)=>{$('[data-save]',el).onclick=()=>{if(!$('#f-st',el).reportValidity())return;F.forEach(([k])=>s[k]=$('#fs-'+k,el).value.trim());s.status=$('#fs-status',el).value;if(isNew)S.students.push(s);DB.save('students');audit(isNew?'إضافة طالب':'تعديل طالب',s.name);close();render();toast('تم الحفظ')};
    const d=$('[data-del]',el);if(d)d.onclick=()=>{close();confirmBox(`حذف الطالب ${s.name}؟ لن تُحذف سجلاته السابقة.`,()=>{S.students=S.students.filter(x=>x!==s);DB.save('students');audit('حذف طالب',s.name);render()},'حذف')}}})}
@@ -1069,9 +1070,10 @@ VIEWS.reports=el=>{const inR=d=>d>=REP_FROM&&d<=REP_TO;
 
 // ---------- الإدارة ----------
 let ADMIN_TAB='users';
-VIEWS.admin=el=>{const tabs=[['users','المستخدمون'],['roles','الأدوار والصلاحيات'],['settings','إعدادات المدرسة'],['import','الاستيراد والنسخ الاحتياطي'],['audit','سجل العمليات']];
+VIEWS.admin=el=>{const tabs=[['users','المستخدمون'],['roles','الأدوار والصلاحيات'],['settings','إعدادات المدرسة'],['year','العام الدراسي الجديد'],['import','الاستيراد والنسخ الاحتياطي'],['audit','سجل العمليات']];
  el.innerHTML=`<div class="tabs">${tabs.map(([k,t])=>`<button class="${ADMIN_TAB===k?'on':''}" data-t="${k}">${t}</button>`).join('')}</div><div id="ad-v"></div>`;
  $$('[data-t]',el).forEach(b=>b.onclick=()=>{ADMIN_TAB=b.dataset.t;render()});const v=$('#ad-v',el);const W=can('admin','edit');
+ if(ADMIN_TAB==='year')yearTab(v);
  if(ADMIN_TAB==='users'){v.innerHTML=`${CLOUD_ON?`<div class="card card-b grid"><b>رابط الدخول للمستخدمين</b><span class="small muted">أرسل هذا الرابط للمعلمين والموظفين مرة واحدة (واتساب أو بريد). يفتحونه من الجوال أو الكمبيوتر، ثم يدخلون بأسماء المستخدمين التي تنشئها لهم هنا.</span><div class="row"><input class="input" id="inv" dir="ltr" readonly value="${esc(inviteLink())}" style="flex:1;min-width:200px"><button class="btn pri" id="inv-c" type="button">نسخ الرابط</button></div></div>`:''}<div class="card"><div class="card-h"><h2>حسابات المستخدمين</h2>${W?`<button class="btn pri" id="us-add">${icon('plus')} مستخدم جديد</button>`:''}</div><div class="tbl-wrap"><table class="tbl"><thead><tr><th>الاسم</th><th>اسم المستخدم</th><th>الدور</th><th>نطاق الفصول</th><th>الحالة</th><th>آخر دخول</th><th></th></tr></thead><tbody>${S.users.map(u=>`<tr><td><b>${esc(u.name)}</b></td><td dir="ltr" style="text-align:right">${esc(u.username)}</td><td>${esc((S.roles.find(r=>r.id===u.role)||{}).name||u.role)}</td><td class="small">${u.scope&&u.scope.length?esc(u.scope.join('، ')):'كل الفصول'}</td><td>${u.status==='نشط'?'<span class="pill p-ok">نشط</span>':'<span class="pill p-mute">موقوف</span>'}${u.lockUntil>Date.now()?' <span class="pill p-warn">مقفل</span>':''}</td><td class="small num">${u.last?new Date(u.last).toLocaleString('ar-SA-u-nu-latn'):'—'}</td><td class="act">${W?`<button class="btn sm" data-u="${u.id}">${icon('edit')} تعديل</button>`:''}</td></tr>`).join('')}</tbody></table></div></div>`;
   if($('#inv-c',v))$('#inv-c',v).onclick=()=>{const i=$('#inv',v);i.select();(navigator.clipboard?navigator.clipboard.writeText(i.value):Promise.reject()).then(()=>toast('تم نسخ الرابط')).catch(()=>{try{document.execCommand('copy');toast('تم نسخ الرابط')}catch(e){}})};
   if(W){$('#us-add',v).onclick=()=>editUser();v.onclick=e=>{const b=e.target.closest('[data-u]');if(b)editUser(S.users.find(u=>u.id===b.dataset.u))}}}
@@ -1137,6 +1139,69 @@ function loadDemo(){const F=['أحمد','محمد','عبدالله','فيصل','
  S.staff=['معلم لغة عربية','معلم رياضيات','معلم فيزياء','معلم لغة إنجليزية','وكيل المدرسة','موجه طلابي'].map((t,i)=>({id:'EMP-'+(i+1),nid:String(1000000000+i*4513),name:`${F[i+3]} ${F[i+8]} ${L[i+2]}`,phone:'96650'+(1234567+i),type:i<4?'معلم':t,evalType:i<4?'معلم':i===4?'وكيل مدرسة':'موجه طلابي',spec:t,status:'نشط'}));
  const subj=['لغتي','رياضيات','فيزياء','إنجليزي','كيمياء','أحياء','تقنية رقمية'];S.schedule=[];classes().forEach((c,ci)=>['الأحد','الاثنين','الثلاثاء','الأربعاء','الخميس'].forEach((d,di)=>{for(let p=1;p<=6;p++){const k=(ci+di*2+p)%subj.length;S.schedule.push({day:d,period:p,cls:c.cls,subject:subj[k],teacher:S.staff[k%4].name})}}));
  COLLS.forEach(k=>DB.save(k))}
+
+// ===================== new academic year: archive, promote, graduate =====================
+const INACTIVE=['منقول','منسحب','متخرج'];
+function nextYearName(y){const m=String(y||'').match(/(\d{4})\D+(\d{4})/);if(m)return `${+m[1]+1}-${+m[2]+1}`;const n=String(y||'').match(/(\d{4})/);return n?`${+n[1]+1}-${+n[1]+2}`:''}
+// grade ladder built from the grade names that exist (الأول الثانوي → الثاني الثانوي → الثالث الثانوي)
+function gradeLadder(){const names=[...new Set(S.students.filter(s=>!INACTIVE.includes(s.status)).map(s=>s.grade).filter(Boolean))].sort((a,b)=>gradeRank(a)-gradeRank(b));
+ const suffix=(names[0]||'').replace(GRADE_ORDER.find(o=>(names[0]||'').includes(o))||'','').trim()||(S.settings.stage||'').replace(/ية$/,'ي');
+ const ranks=names.map(gradeRank).filter(r=>r<9);const st=(S.settings.stage||'')+' '+(names[0]||'');const stageMax=/ابتدا/.test(st)?5:/ثانو|متوسط/.test(st)?2:null;const lo=0,hi=stageMax??Math.max(...ranks,0);
+ const ladder=[];for(let r=lo;r<=hi;r++){const ex=names.find(n=>gradeRank(n)===r);ladder.push(ex||`${GRADE_ORDER[r]} ${suffix}`.trim())}return ladder}
+function promotionPlan(){const ladder=gradeLadder();const last=ladder[ladder.length-1];const plan={promote:[],graduate:[],stay:[]};
+ for(const s of S.students){if(INACTIVE.includes(s.status))continue;const i=ladder.indexOf(s.grade);
+  if(i<0)plan.stay.push(s);else if(s.grade===last)plan.graduate.push(s);else plan.promote.push({s,to:ladder[i+1]})}
+ return{ladder,last,...plan}}
+function newClassCode(oldCls,toGrade){const r=gradeRank(toGrade)+1;const c=String(oldCls||'');return /^\d{3}$/.test(c)?`${r}${c.slice(1)}`:c}
+function runRollover(opts){const s=S.settings,oldYear=s.year||'العام السابق',plan=promotionPlan();
+ const snap={year:oldYear,closed:new Date().toISOString(),by:ME?ME.username:'',
+  students:S.students.map(x=>({id:x.id,nid:x.nid,name:x.name,grade:x.grade,cls:x.cls,status:x.status})),
+  attendance:S.attendance,behavior:S.behavior,leaves:S.leaves,late:S.late,actions:S.actions,staffAtt:S.staffAtt,evals:S.evals,calendar:S.calendar,schedule:S.schedule};
+ S.archive=Array.isArray(S.archive)?S.archive.filter(a=>a.year!==oldYear):[];S.archive.push(snap);
+ plan.promote.forEach(({s:st,to})=>{st.grade=to;st.cls=newClassCode(st.cls,to);st.sec=String(st.cls).slice(1).replace(/^0/,'')||st.sec;st.history=[...(st.history||[]),{year:oldYear,grade:snap.students.find(x=>x.id===st.id)?.grade}]});
+ plan.graduate.forEach(st=>{st.status='متخرج';st.gradYear=oldYear;st.history=[...(st.history||[]),{year:oldYear,grade:st.grade,result:'متخرج'}]});
+ S.attendance=[];S.behavior=[];S.leaves=[];S.late=[];S.actions=[];S.staffAtt=[];
+ if(!opts.keepEvals)S.evals=[];if(!opts.keepCalendar)S.calendar=[];if(!opts.keepSchedule)S.schedule=[];
+ s.year=opts.year;s.term=opts.term||'';
+ DB.save('archive','students','attendance','behavior','leaves','late','actions','staffAtt','evals','calendar','schedule','settings');
+ audit('بدء عام دراسي جديد',`${oldYear} ← ${opts.year}: ترفيع ${plan.promote.length}، تخرج ${plan.graduate.length}`);
+ return plan}
+function downloadBackup(tag){const data={};COLLS.forEach(k=>data[k]=S[k]);const blob=new Blob([JSON.stringify({app:'sims-web',v:1,at:new Date().toISOString(),data})],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`نسخة_احتياطية_${tag||todayISO()}.json`;document.body.appendChild(a);a.click();a.remove()}
+function yearTab(v){const s=S.settings,plan=promotionPlan(),W=can('admin','edit');const arch=Array.isArray(S.archive)?S.archive:[];
+ const byTo={};plan.promote.forEach(p=>{byTo[p.s.grade+' ← '+p.to]=(byTo[p.s.grade+' ← '+p.to]||0)+1});
+ v.innerHTML=`<div class="card"><div class="card-h"><h2>بدء عام دراسي جديد</h2><span class="chip">العام الحالي: ${esc(s.year||'—')}</span></div><div class="card-b grid">
+ <p class="small" style="margin:0">عند البدء: تُحفظ كل بيانات العام الحالي في الأرشيف (الغياب، السلوك، الاستئذان، التأخر، الإجراءات، حضور الموظفين)، ثم يُرفَّع كل طالب إلى الصف التالي، ويُوضع طلاب ${esc(plan.last||'الصف الأخير')} بحالة <b>متخرج</b>، وتبدأ سجلات العام الجديد فارغة. يبقى الموظفون والمستخدمون والصلاحيات والإعدادات كما هي.</p>
+ <div class="kpis">${Object.entries(byTo).map(([k,n])=>kpi(n,'ترفيع: '+k)).join('')}${kpi(plan.graduate.length,'يتخرجون من '+(plan.last||''))}${plan.stay.length?kpi(plan.stay.length,'بلا صف معروف (لن يتغيروا)',true):''}</div>
+ <div class="form-grid"><div class="field"><label for="ny-year">اسم العام الجديد</label><input class="input" id="ny-year" value="${esc(nextYearName(s.year))}"></div><div class="field"><label for="ny-term">الفصل الدراسي</label><input class="input" id="ny-term" value="الفصل الدراسي الأول"></div></div>
+ <div class="row small"><label class="chip"><input type="checkbox" id="ny-sch" checked> الإبقاء على الجدول الدراسي</label><label class="chip"><input type="checkbox" id="ny-cal"> الإبقاء على التقويم الدراسي</label><label class="chip"><input type="checkbox" id="ny-ev"> الإبقاء على تقييمات الموظفين</label></div>
+ <p class="small muted" style="margin:0">رموز الفصول تتبع الصف الجديد مع الإبقاء على رقم الشعبة (مثل 101 ← 201). يمكنك بعدها نقل أي طالب لفصل آخر من «الطلاب والفصول»، وإضافة طلاب الصف الأول المستجدين يدويًا أو من ملف Excel.</p>
+ ${W?`<div class="row"><button class="btn pri" id="ny-go">${icon('calendar')} بدء العام الجديد</button></div>`:''}</div></div>
+ <div class="card"><div class="card-h"><h2>الأعوام المؤرشفة</h2><span class="chip">${arch.length}</span></div><div class="tbl-wrap"><table class="tbl"><thead><tr><th>العام</th><th>الطلاب</th><th>سجلات الحضور</th><th>المخالفات</th><th>الاستئذان</th><th>تاريخ الإغلاق</th><th></th></tr></thead><tbody>${arch.map((a,i)=>`<tr><td><b>${esc(a.year)}</b></td><td class="num">${(a.students||[]).length}</td><td class="num">${(a.attendance||[]).length}</td><td class="num">${(a.behavior||[]).length}</td><td class="num">${(a.leaves||[]).length}</td><td class="num small">${a.closed?new Date(a.closed).toLocaleDateString('ar-SA-u-nu-latn'):''}</td><td class="act"><button class="btn sm" data-ax="${i}">${icon('download')} Excel</button></td></tr>`).join('')||'<tr><td colspan="7" class="empty">لا توجد أعوام مؤرشفة بعد</td></tr>'}</tbody></table></div></div>`;
+ v.querySelectorAll('[data-ax]').forEach(b=>b.onclick=()=>{const a=arch[+b.dataset.ax];const wb=XLSX.utils.book_new();
+  const add=(name,head,rows)=>{const ws=XLSX.utils.aoa_to_sheet([head,...rows]);ws['!views']=[{RTL:true}];XLSX.utils.book_append_sheet(wb,ws,name)};
+  add('الطلاب',['الاسم','الهوية','الصف','الفصل','الحالة'],(a.students||[]).map(x=>[x.name,x.nid,x.grade,x.cls,x.status]));
+  add('الغياب',['التاريخ','الاسم','الهوية','الصف','الفصل','الحالة','النوع'],(a.attendance||[]).filter(x=>x.status!=='حاضر').map(x=>[x.date,x.name,x.nid,x.grade,x.cls,x.status,x.type]));
+  add('السلوك',['التاريخ','الاسم','الهوية','المخالفة','الدرجة','التكرار','الإجراء'],(a.behavior||[]).map(x=>[x.date,x.name,x.nid,x.text,x.deg,x.rep,x.action]));
+  add('الاستئذان',['رقم','التاريخ','الوقت','الاسم','النوع','السبب'],(a.leaves||[]).map(x=>[x.no,x.date,x.time,x.name,x.type,x.reason]));
+  XLSX.writeFile(wb,`أرشيف_${a.year}.xlsx`);audit('تصدير أرشيف',a.year)});
+ const go=$('#ny-go',v);if(go)go.onclick=()=>{const y=$('#ny-year',v).value.trim();if(!y)return toast('اكتب اسم العام الجديد',1);if(y===s.year)return toast('اسم العام الجديد مطابق للعام الحالي',1);
+  const opts={year:y,term:$('#ny-term',v).value.trim(),keepSchedule:$('#ny-sch',v).checked,keepCalendar:$('#ny-cal',v).checked,keepEvals:$('#ny-ev',v).checked};
+  modal({title:'تأكيد بدء العام '+y,body:`<p>سيُؤرشف العام <b>${esc(s.year||'')}</b> كاملًا، ويُرفَّع <b>${plan.promote.length}</b> طالبًا، ويتخرج <b>${plan.graduate.length}</b> طالبًا، وتُفرَّغ سجلات الغياب والسلوك والاستئذان للعام الجديد.</p><p class="small muted">سيُنزَّل ملف نسخة احتياطية كاملة إلى جهازك قبل التنفيذ. اكتب <b>${esc(y)}</b> للتأكيد:</p><input class="input" id="ny-c" autocomplete="off">`,
+   foot:`<button class="btn danger" data-y>تنفيذ</button><button class="btn" data-close>إلغاء</button>`,onMount:(m,close)=>{$('[data-y]',m).onclick=()=>{if($('#ny-c',m).value.trim()!==y)return toast('اكتب اسم العام كما هو للتأكيد',1);
+    try{downloadBackup('قبل_'+y)}catch(e){}const p=runRollover(opts);close();ADMIN_TAB='year';render();toast(`بدأ العام ${y}: رُفّع ${p.promote.length} وتخرج ${p.graduate.length}`)}}})}}
+// append new students from an Excel/CSV sheet (does not replace existing ones)
+function importNewStudents(){const first=gradeLadder()[0]||'';
+ modal({title:'إضافة طلاب مستجدين من ملف',body:`<p class="small">ملف Excel فيه أعمدة: <b>اسم الطالب</b> و<b>رقم الهوية</b> (إلزامية)، و<b>الصف</b> و<b>الفصل</b> و<b>ولي الأمر</b> و<b>الجوال</b> (اختيارية). الطالب الذي هويته مسجلة مسبقًا يُتجاوز.</p>
+ <div class="form-grid"><div class="field"><label for="ns-g">الصف الافتراضي</label><input class="input" id="ns-g" value="${esc(first)}"></div><div class="field"><label for="ns-c">الفصل الافتراضي</label><input class="input" id="ns-c" value="${first?gradeRank(first)+1+'01':''}"></div></div><input type="file" class="input" id="ns-f" accept=".xlsx,.xls,.xlsm,.csv"><div id="ns-r"></div>`,
+ foot:`<button class="btn pri" data-go disabled>إضافة</button><button class="btn" data-close>إلغاء</button>`,onMount:(m,close)=>{let rows=[];
+  $('#ns-f',m).onchange=e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{try{const wb=XLSX.read(new Uint8Array(r.result),{type:'array'});const ws=wb.Sheets[wb.SheetNames[0]];const all=XLSX.utils.sheet_to_json(ws,{header:1,raw:false,defval:''});
+    const hi=all.findIndex(r=>r.some(c=>/اسم/.test(c))&&r.some(c=>/هوية|السجل/.test(c)));if(hi<0){$('#ns-r',m).innerHTML='<div class="err">لم أجد عمودي «اسم الطالب» و«رقم الهوية» في أول ورقة.</div>';return}
+    const H=all[hi].map(String);const col=re=>H.findIndex(h=>re.test(h));const ci={n:col(/اسم\s*الطالب|^الاسم/),id:col(/هوية|السجل/),g:col(/^الصف/),c:col(/الفصل|الشعبة/),gu:col(/ولي/),p:col(/جوال|هاتف/)};
+    const have=new Set(S.students.map(s=>String(s.nid)));rows=all.slice(hi+1).map(r=>({name:String(r[ci.n]||'').trim(),nid:String(r[ci.id]||'').trim(),grade:ci.g>=0?String(r[ci.g]||'').trim():'',cls:ci.c>=0?String(r[ci.c]||'').trim():'',guardian:ci.gu>=0?String(r[ci.gu]||'').trim():'',phone:ci.p>=0?String(r[ci.p]||'').trim():''})).filter(x=>x.name&&x.nid);
+    const dup=rows.filter(x=>have.has(x.nid)).length;rows=rows.filter(x=>!have.has(x.nid));
+    $('#ns-r',m).innerHTML=`<div class="row"><span class="pill p-ok">${rows.length} طالب جديد</span>${dup?`<span class="pill p-mute">${dup} مسجل مسبقًا (سيُتجاوز)</span>`:''}</div>`;$('[data-go]',m).disabled=!rows.length}catch(err){$('#ns-r',m).innerHTML=`<div class="err">تعذرت قراءة الملف: ${esc(err.message)}</div>`}};r.readAsArrayBuffer(f)};
+  $('[data-go]',m).onclick=()=>{const g=$('#ns-g',m).value.trim(),c=$('#ns-c',m).value.trim();rows.forEach(x=>S.students.push({id:uid(),nid:x.nid,name:x.name,grade:x.grade||g,cls:x.cls||c,sec:String(x.cls||c).slice(1),guardian:x.guardian,phone:x.phone,status:'نشط',stage:S.settings.stage,joined:S.settings.year||''}));
+   DB.save('students');audit('إضافة طلاب مستجدين',rows.length+' طالب');close();render();toast(`أُضيف ${rows.length} طالبًا`)}}})}
 
 // ===================== automatic live copy in a folder on disk =====================
 // The user links a folder once. Every change is written to <folder>/sims-data.json within ~1s,
@@ -1212,7 +1277,7 @@ const Cloud={token:null,stamp:null,status:{},dirty:new Set(),timer:null,state:'o
   try{this.token=localStorage.getItem('sims-token')}catch(e){}
   if(this.token){try{await this.load();}catch(e){this.saveTok(null)}}
   CUR=(location.hash||'#home').slice(1)||'home';render();this.startPoll()},
- apply(data){for(const [k,v] of Object.entries(data)){if(this.dirty.has(k))continue;S[k]=v}S.settings=Object.assign(defaultSettings(),S.settings||{});if(!Array.isArray(S.rules)||!S.rules.length)S.rules=RULES_DEFAULT;if(!S.evalRef)S.evalRef=EVAL_DEFAULT;if(!Array.isArray(S.roles)||!S.roles.length)S.roles=defaultRoles();for(const k of ['students','staff','schedule','attendance','behavior','leaves','late','actions','calendar','counselors','evals','staffAtt','audit','users'])if(!Array.isArray(S[k]))S[k]=[]},
+ apply(data){for(const [k,v] of Object.entries(data)){if(this.dirty.has(k))continue;S[k]=v}S.settings=Object.assign(defaultSettings(),S.settings||{});if(!Array.isArray(S.rules)||!S.rules.length)S.rules=RULES_DEFAULT;if(!S.evalRef)S.evalRef=EVAL_DEFAULT;if(!Array.isArray(S.roles)||!S.roles.length)S.roles=defaultRoles();for(const k of ['students','staff','schedule','attendance','behavior','leaves','late','actions','calendar','counselors','evals','staffAtt','audit','users','archive'])if(!Array.isArray(S[k]))S[k]=[]},
  async load(){const r=await this.rpc('sims_load',{p_token:this.token});this.apply(r.data);this.stamp=r.stamp;ME=r.me;this.state='on'},
  expired(){if(!ME)return;ME=null;this.saveTok(null);render();toast('انتهت الجلسة، سجّل الدخول مجددًا',1)},
  async logout(){try{await this.rpc('sims_logout',{p_token:this.token})}catch(e){}this.saveTok(null);ME=null;render()},
