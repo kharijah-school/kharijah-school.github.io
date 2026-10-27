@@ -227,7 +227,8 @@ table.tbl{width:100%;border-collapse:collapse;font-size:13.5px}
   body.printing > *:not(#print-root){display:none!important}
   body.printing #print-root{display:block}
   body.printing{background:#fff}
-  #print-root .page{page-break-after:always;break-after:page;box-shadow:none;margin:0}
+  #print-root .page{page-break-after:always;break-after:page;page-break-inside:avoid;box-shadow:none;margin:0 auto!important;width:auto!important;height:99.5vh!important;max-width:100vw;aspect-ratio:210/297}
+  #print-root .pos{page-break-after:always;break-after:page}
   #print-root .page:last-child{page-break-after:auto;break-after:auto}
   .fld:empty::before{content:none}
   .fld[contenteditable]:hover,.fld[contenteditable]:focus{outline:0;background:none}
@@ -559,14 +560,14 @@ const docPage=(inner,n)=>`<div class="page"><div class="doc">${inner}</div><div 
 const signBlock=(cols)=>`<div class="sign">${cols.map(([t,n])=>`<div>${esc(t)}<br><br>${esc(n||'....................')}<br>التوقيع: ............</div>`).join('')}</div>`;
 function chunk(a,n){const o=[];for(let i=0;i<a.length;i+=n)o.push(a.slice(i,i+n));return o.length?o:[[]]}
 function docRoster(cls,withMarks){const list=students().filter(s=>String(s.cls)===String(cls)).sort((a,b)=>a.name.localeCompare(b.name,'ar'));const c=classes().find(x=>String(x.cls)===String(cls))||{};
- const pages=chunk(list,25);return pages.map((part,pi)=>docPage(docHead(withMarks?'كشف رصد الحضور اليومي':'كشف طلاب الفصل',`<span>المرحلة: <b>${esc(S.settings.stage)}</b></span><span>الصف: <b>${esc(c.grade||'')}</b></span><span>الفصل: <b>${esc(cls)}</b></span><span>عدد الطلاب: <b>${list.length}</b></span>${withMarks?'<span>اليوم: ......... التاريخ: ....../....../......</span>':''}`)+
-  `<table><thead><tr><th class="c" style="width:9mm">م</th><th>اسم الطالب</th><th class="c" style="width:28mm">رقم الهوية</th>${withMarks?'<th class="c" style="width:16mm">حاضر</th><th class="c" style="width:16mm">غائب</th><th class="c" style="width:16mm">متأخر</th>':'<th style="width:55mm">الملاحظات</th>'}</tr></thead><tbody>${part.map((s,i)=>`<tr><td class="c">${pi*25+i+1}</td><td>${esc(s.name)}</td><td class="c">${esc(s.nid)}</td>${withMarks?'<td></td><td></td><td></td>':'<td></td>'}</tr>`).join('')}</tbody></table>`+
+ const pages=chunk(list,20);return pages.map((part,pi)=>docPage(docHead(withMarks?'كشف رصد الحضور اليومي':'كشف طلاب الفصل',`<span>المرحلة: <b>${esc(S.settings.stage)}</b></span><span>الصف: <b>${esc(c.grade||'')}</b></span><span>الفصل: <b>${esc(cls)}</b></span><span>عدد الطلاب: <b>${list.length}</b></span>${withMarks?'<span>اليوم: ......... التاريخ: ....../....../......</span>':''}`)+
+  `<table><thead><tr><th class="c" style="width:9mm">م</th><th>اسم الطالب</th><th class="c" style="width:28mm">رقم الهوية</th>${withMarks?'<th class="c" style="width:16mm">حاضر</th><th class="c" style="width:16mm">غائب</th><th class="c" style="width:16mm">متأخر</th>':'<th style="width:55mm">الملاحظات</th>'}</tr></thead><tbody>${part.map((s,i)=>`<tr><td class="c">${pi*20+i+1}</td><td>${esc(s.name)}</td><td class="c">${esc(s.nid)}</td>${withMarks?'<td></td><td></td><td></td>':'<td></td>'}</tr>`).join('')}</tbody></table>`+
   signBlock([['رائد الفصل',''],['وكيل شؤون الطلاب',S.settings.deputy],['مدير المدرسة',S.settings.principal]]),`${pi+1} / ${pages.length}`))}
 // flow blocks into A4 pages by measuring them (tables are split by rows, header repeated)
 function flowPages(title,meta,blocks){
  const host=document.createElement('div');host.style.cssText='position:absolute;left:-9999px;top:0;visibility:hidden';document.body.appendChild(host);
  host.innerHTML=`<div class="page"><div class="doc" id="fp-doc">${docHead(title,meta)}</div></div>`;const doc=host.querySelector('#fp-doc');
- const mm=host.querySelector('.page').offsetHeight/297;const limit=(297-16)*mm-12*mm; // page minus bottom padding/foot
+ const mm=host.querySelector('.page').offsetHeight/297;const limit=(297-16)*mm-30*mm; // page minus bottom padding/foot, plus room for browser print margins (Safari)
  const pages=[];let cur=docHead(title,meta);doc.innerHTML=cur;
  const fits=html=>{doc.innerHTML=cur+html;return doc.scrollHeight<=limit};
  const push=()=>{pages.push(cur);cur=docHead(title,meta);doc.innerHTML=cur};
@@ -622,8 +623,8 @@ function docTimetable(kind,key){const days=['الأحد','الاثنين','ال�
  return [docPage(docHead('الجدول الدراسي',`<span>${kind==='cls'?'الفصل':'المعلم'}: <b>${esc(key)}</b></span><span>عدد الحصص: <b>${rows.length}</b></span>`)+
  `<table style="font-size:9.5pt"><thead><tr><th class="c">اليوم / الحصة</th>${Array.from({length:maxP},(_,i)=>`<th class="c">${i+1}</th>`).join('')}</tr></thead><tbody>${days.map(d=>`<tr><th class="c">${d}</th>${Array.from({length:maxP},(_,i)=>{const r=rows.find(x=>x.day===d&&+x.period===i+1);return `<td class="c" style="height:16mm">${r?`<b>${esc(r.subject)}</b><br><span style="font-size:8pt">${esc(kind==='cls'?r.teacher:r.cls)}</span>`:''}</td>`}).join('')}</tr>`).join('')}</tbody></table>`+
  signBlock([['وكيل الشؤون التعليمية',S.settings.deputyEdu],['',''],['مدير المدرسة',S.settings.principal]]))]}
-function docTeachers(){const list=S.staff.filter(s=>s.status!=='غير نشط').sort((a,b)=>a.name.localeCompare(b.name,'ar'));const pages=chunk(list,28);
- return pages.map((p,pi)=>docPage(docHead('كشف بيانات المعلمين والموظفين',`<span>العدد: <b>${list.length}</b></span>`)+`<table><thead><tr><th class="c">م</th><th>الاسم</th><th class="c">الهوية</th><th class="c">الجوال</th><th>التخصص / العمل</th></tr></thead><tbody>${p.map((s,i)=>`<tr><td class="c">${pi*28+i+1}</td><td>${esc(s.name)}</td><td class="c">${esc(s.nid)}</td><td class="c">${esc(s.phone)}</td><td>${esc(s.spec||s.job||s.type||'')}</td></tr>`).join('')}</tbody></table>`+signBlock([['',''],['',''],['مدير المدرسة',S.settings.principal]]),`${pi+1} / ${pages.length}`))}
+function docTeachers(){const list=S.staff.filter(s=>s.status!=='غير نشط').sort((a,b)=>a.name.localeCompare(b.name,'ar'));const pages=chunk(list,22);
+ return pages.map((p,pi)=>docPage(docHead('كشف بيانات المعلمين والموظفين',`<span>العدد: <b>${list.length}</b></span>`)+`<table><thead><tr><th class="c">م</th><th>الاسم</th><th class="c">الهوية</th><th class="c">الجوال</th><th>التخصص / العمل</th></tr></thead><tbody>${p.map((s,i)=>`<tr><td class="c">${pi*22+i+1}</td><td>${esc(s.name)}</td><td class="c">${esc(s.nid)}</td><td class="c">${esc(s.phone)}</td><td>${esc(s.spec||s.job||s.type||'')}</td></tr>`).join('')}</tbody></table>`+signBlock([['',''],['',''],['مدير المدرسة',S.settings.principal]]),`${pi+1} / ${pages.length}`))}
 function staffEvalSummary(sf){const ev=S.evals.filter(e=>String(e.nid)===String(sf.nid)||e.emp===sf.id);const tot=ev.reduce((t,e)=>t+(+e.score||0),0);const w=ev.reduce((t,e)=>t+(+e.w||0),0);return{ev,tot,w}}
 function docStaffStats(sf){const att=S.staffAtt.filter(a=>String(a.nid)===String(sf.nid));const by=t=>att.filter(a=>a.type===t).length;const {ev,tot}=staffEvalSummary(sf);
  return [docPage(docHead('إحصاءات الموظف',`<span>الاسم: <b>${esc(sf.name)}</b></span><span>الهوية: <b>${esc(sf.nid)}</b></span><span>نوع التقييم: <b>${esc(sf.evalType||'')}</b></span>`)+
@@ -632,14 +633,14 @@ function docStaffStats(sf){const att=S.staffAtt.filter(a=>String(a.nid)===String
  <div><b>عناصر التقييم</b></div><table><thead><tr><th>العنصر</th><th class="c">الوزن</th><th class="c">الشواهد المكتملة</th><th class="c">التقدير</th><th class="c">الدرجة الوزنية</th></tr></thead><tbody>${ev.map(e=>`<tr><td>${esc(e.item)}</td><td class="c">${esc(e.w)}</td><td class="c">${esc(e.done||0)} / ${esc(e.need||0)}</td><td class="c">${esc(e.grade??'')}</td><td class="c">${esc(e.score??'')}</td></tr>`).join('')||'<tr><td colspan="5" class="c">لا توجد بيانات تقييم</td></tr>'}<tr><th colspan="4">المجموع</th><th class="c">${Math.round(tot*100)/100}</th></tr></tbody></table>`+
  signBlock([['الموظف',sf.name],['',''],['مدير المدرسة',S.settings.principal]]))]}
 function docStaffEvidence(sf){const type=sf.evalType||'معلم';const items=S.evalRef.items.filter(i=>i.type===type&&i.active);const evd=S.evalRef.evidence.filter(e=>e.type===type&&e.active);
- const rows=items.flatMap(it=>evd.filter(e=>e.item===it.id).map(e=>({it:it.name,e:e.name,req:e.req})));const pages=chunk(rows,26);
- return pages.map((p,pi)=>docPage(docHead('كشف الشواهد المطلوبة',`<span>الموظف: <b>${esc(sf.name)}</b></span><span>نوع التقييم: <b>${esc(type)}</b></span>`)+`<table style="font-size:9.5pt"><thead><tr><th class="c">م</th><th>عنصر التقييم</th><th>الشاهد المطلوب</th><th class="c">إلزامي</th><th class="c" style="width:22mm">الحالة</th></tr></thead><tbody>${p.map((r,i)=>`<tr><td class="c">${pi*26+i+1}</td><td>${esc(r.it)}</td><td>${esc(r.e)}</td><td class="c">${r.req?'نعم':'لا'}</td><td></td></tr>`).join('')||'<tr><td colspan="5" class="c">لا توجد شواهد لهذا النوع</td></tr>'}</tbody></table>`,`${pi+1} / ${pages.length}`))}
+ const rows=items.flatMap(it=>evd.filter(e=>e.item===it.id).map(e=>({it:it.name,e:e.name,req:e.req})));const pages=chunk(rows,20);
+ return pages.map((p,pi)=>docPage(docHead('كشف الشواهد المطلوبة',`<span>الموظف: <b>${esc(sf.name)}</b></span><span>نوع التقييم: <b>${esc(type)}</b></span>`)+`<table style="font-size:9.5pt"><thead><tr><th class="c">م</th><th>عنصر التقييم</th><th>الشاهد المطلوب</th><th class="c">إلزامي</th><th class="c" style="width:22mm">الحالة</th></tr></thead><tbody>${p.map((r,i)=>`<tr><td class="c">${pi*20+i+1}</td><td>${esc(r.it)}</td><td>${esc(r.e)}</td><td class="c">${r.req?'نعم':'لا'}</td><td></td></tr>`).join('')||'<tr><td colspan="5" class="c">لا توجد شواهد لهذا النوع</td></tr>'}</tbody></table>`,`${pi+1} / ${pages.length}`))}
 function posSlip(lv,copy){const s=S.settings,w=+s.posWidth===58?' w58':'';
  return `<div class="pos${w}"><div class="ph">${esc(s.school)}</div><div>ورقة إذن</div><div class="copy">${esc(copy)}</div><div class="lr"><span>رقم الإذن: ${String(lv.no).padStart(6,'0')}</span><span>${fmtG(lv.date)} ${esc(lv.time||'')}</span></div><div>${esc(dayName(lv.date))}${lv.period?' – الحصة '+esc(lv.period):''}</div><hr>
  <div style="text-align:right">الطالب: <b>${esc(lv.name)}</b><br>الصف: ${esc(lv.grade||'')} &nbsp; الفصل: ${esc(lv.cls||'')}${lv.reason?'<br>السبب: '+esc(lv.reason):''}${lv.receiver?'<br>المستلم: '+esc(lv.receiver):''}</div>
  <div class="msg">${esc(lv.msg||lv.type)}</div><div>إدارة المدرسة</div><div style="font-size:8pt">${esc(ME?ME.name:'')}</div><div class="cut"></div></div>`}
 // table report page(s)
-function docTable(title,meta,head,rows,perPage=30,sign){const pages=chunk(rows,perPage);
+function docTable(title,meta,head,rows,perPage=22,sign){const pages=chunk(rows,perPage);
  return pages.map((p,pi)=>docPage(docHead(title,meta)+`<table><thead><tr>${head.map(h=>`<th class="c">${esc(h)}</th>`).join('')}</tr></thead><tbody>${p.map(r=>`<tr>${r.map((c,ci)=>`<td class="${ci===1?'':'c'}">${esc(c)}</td>`).join('')}</tr>`).join('')||`<tr><td colspan="${head.length}" class="c">لا توجد بيانات</td></tr>`}</tbody></table>`+(pi===pages.length-1&&sign!==false?signBlock([['وكيل شؤون الطلاب',S.settings.deputy],['',''],['مدير المدرسة',S.settings.principal]]):''),`${pi+1} / ${pages.length}`))}
 
 // ---------- send to printer ----------
