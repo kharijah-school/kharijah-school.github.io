@@ -468,7 +468,7 @@ const clsLabel=c=>c?`${c.grade||''} / ${c.cls}`:'';
 const stageOf=st=>(st&&st.stage)||S.settings.stage||'';
 function counselorOf(st){const c=S.counselors.find(x=>x.grade===st.grade&&String(x.sec)===String(st.sec));return c?c.name:S.settings.counselor}
 // absence stats for a student
-function absStats(nid,from,to){
+function absStats(nid,from,to){if(from===undefined&&to===undefined)[from,to]=countRange();
  const recs=S.attendance.filter(a=>String(a.nid)===String(nid)&&a.status!=='حاضر'&&(!from||a.date>=from)&&(!to||a.date<=to)).sort((a,b)=>a.date<b.date?-1:1);
  const un=recs.filter(a=>a.status==='غائب'&&a.type!=='بعذر'),ex=recs.filter(a=>a.status==='غائب'&&a.type==='بعذر'),late=recs.filter(a=>a.status==='متأخر');
  // consecutive unexcused (school days = dates that have any attendance record)
@@ -482,7 +482,7 @@ function dueActions(st){const a=absStats(st.nid),out=[],T=S.settings.absT;
  [3,5,10].forEach(n=>{if(a.exN>=n)out.push({code:'E'+n,label:`بعذر – ${n} أيام`,date:a.ex[n-1].date,form:'abs_excused'})});
  if(a.unN>=(T[3]||15))out.push({code:'U15',label:`${T[3]||15} يوم – إبلاغ حالة إيذاء`,date:a.un[(T[3]||15)-1].date,form:'abuse'});
  return out}
-function repCount(nid,ruleId,beforeId){return S.behavior.filter(b=>String(b.nid)===String(nid)&&b.rule===ruleId&&b.id!==beforeId).length}
+function repCount(nid,ruleId,beforeId){const [f,t]=countRange();return S.behavior.filter(b=>String(b.nid)===String(nid)&&b.rule===ruleId&&b.id!==beforeId&&(!f||b.date>=f)&&(!t||b.date<=t)).length}
 function ruleOf(id){return S.rules.find(r=>r.id===id)}
 function splitActs(txt){return String(txt||'').split(/[؛;]\s*/).map(s=>s.trim()).filter(Boolean)}
 
@@ -582,20 +582,20 @@ function flowPages(title,meta,blocks){
    cur+=tbl(rest.slice(0,n));rest=rest.slice(n);if(rest.length)push()}
  }
  pages.push(cur);host.remove();return pages.map((p,i)=>docPage(p,`${i+1} / ${pages.length}`))}
-function docStudentFull(st){const s=S.settings,a=absStats(st.nid),nid=String(st.nid);
- const beh=S.behavior.filter(b=>String(b.nid)===nid).sort((x,y)=>(x.date||'')<(y.date||'')?-1:1);
- const lv=S.leaves.filter(l=>String(l.nid)===nid).sort((x,y)=>((x.date||'')+(x.time||''))<((y.date||'')+(y.time||''))?-1:1);
- const lateL=S.late.filter(l=>String(l.nid)===nid);
- const att=S.attendance.filter(r=>String(r.nid)===nid);const days=new Set(att.map(r=>r.date)).size;const present=att.filter(r=>r.status==='حاضر').length;
+function docStudentFull(st,per){const s=S.settings,a=absStats(st.nid,per?per.from:'',per?per.to:''),nid=String(st.nid);const inP=d=>!per||(!!d&&d>=per.from&&d<=per.to);
+ const beh=S.behavior.filter(b=>String(b.nid)===nid&&inP(b.date)).sort((x,y)=>(x.date||'')<(y.date||'')?-1:1);
+ const lv=S.leaves.filter(l=>String(l.nid)===nid&&inP(l.date)).sort((x,y)=>((x.date||'')+(x.time||''))<((y.date||'')+(y.time||''))?-1:1);
+ const lateL=S.late.filter(l=>String(l.nid)===nid&&inP(l.date));
+ const att=S.attendance.filter(r=>String(r.nid)===nid&&inP(r.date));const days=new Set(att.map(r=>r.date)).size;const present=att.filter(r=>r.status==='حاضر').length;
  const rate=days?Math.round(present/days*1000)/10:null;
  const ded=beh.reduce((t,b)=>t+(+b.ded||+(ruleOf(b.rule)||{}).ded||0),0);
- const due=dueActions(st);const acts=S.actions.filter(x=>String(x.nid)===nid);
+ const due=per?[]:dueActions(st);const acts=S.actions.filter(x=>String(x.nid)===nid&&inP(x.date));
  const cls=classes().find(c=>String(c.cls)===String(st.cls))||{};
  const months={};att.forEach(r=>{const m=(r.date||'').slice(0,7);if(!m)return;months[m]=months[m]||{d:0,u:0,e:0,l:0};months[m].d++;if(r.status==='غائب'){r.type==='بعذر'?months[m].e++:months[m].u++}if(r.status==='متأخر')months[m].l++});
  const MN=['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
  const sched=S.schedule.filter(r=>String(r.cls)===String(st.cls));
  const H=t=>`<div style="font-weight:700;color:#0E3A45;border-right:3pt solid #2793A4;padding-right:2mm;margin-top:1mm">${esc(t)}</div>`;
- const meta=`<span>الطالب: <b>${esc(st.name)}</b></span><span>الصف: <b>${esc(st.grade)}</b></span><span>الفصل: <b>${esc(st.cls)}</b></span>`;
+ const meta=`<span>الطالب: <b>${esc(st.name)}</b></span><span>الصف: <b>${esc(st.grade)}</b></span><span>الفصل: <b>${esc(st.cls)}</b></span><span>الفترة: <b>${per?esc(per.name):'العام الدراسي كاملًا'}</b></span>`;
  const absRows=[...a.un.map(x=>({...x,k:'بدون عذر'})),...a.ex.map(x=>({...x,k:'بعذر'})),...a.late.map(x=>({...x,k:'تأخر'})),...lateL.map(x=>({date:x.date,k:'تأخر',inT:x.inT,notes:(x.mins?x.mins+' دقيقة ':'')+(x.notes||'')}))].sort((x,y)=>x.date<y.date?-1:1);
  const daysW=['الأحد','الاثنين','الثلاثاء','الأربعاء','الخميس'],maxP=Math.max(7,...sched.map(r=>+r.period||0));
  const blocks=[
@@ -618,7 +618,7 @@ function docStudentFull(st){const s=S.settings,a=absStats(st.nid),nid=String(st.
   H('ملاحظات الموجه الطلابي')+'<div style="border:.6pt solid #b9cdd0;height:26mm"></div>',
   `<div style="font-size:8.5pt;color:#555">أُعد هذا التقرير آليًا من نظام شؤون الطلاب بتاريخ ${esc(fmtD(todayISO()))} الساعة ${nowHM()}${ME?' بواسطة '+esc(ME.name||ME.username):''}.</div>`+signBlock([['الموجه الطلابي',counselorOf(st)],['وكيل شؤون الطلاب',s.deputy],['مدير المدرسة',s.principal]]).replace('margin-top:auto','')
  ];
- return flowPages('التقرير الشامل عن الطالب',meta,blocks)}
+ return flowPages('التقرير الشامل عن الطالب'+(per?' – '+per.name:''),meta,blocks)}
 function docTimetable(kind,key){const days=['الأحد','الاثنين','الثلاثاء','الأربعاء','الخميس'];const rows=S.schedule.filter(r=>kind==='cls'?String(r.cls)===String(key):r.teacher===key);
  const maxP=Math.max(7,...rows.map(r=>+r.period||0));
  return [docPage(docHead('الجدول الدراسي',`<span>${kind==='cls'?'الفصل':'المعلم'}: <b>${esc(key)}</b></span><span>عدد الحصص: <b>${rows.length}</b></span>`)+
@@ -725,6 +725,7 @@ document.addEventListener('click',e=>{const b=e.target.closest('[data-theme]');i
 function render(){
  if(!S.users.length)return renderSetup();
  if(!ME)return renderLogin();
+ try{seedMoE1448()}catch(e){console.warn(e)}
  const mods=MODULES.filter(m=>can(m.id,'view'));if(!mods.find(m=>m.id===CUR))CUR=mods[0]?mods[0].id:'home';
  const mod=MODULES.find(m=>m.id===CUR);const s=S.settings;
  $('#app').innerHTML=`<div class="shell"><aside class="rail" id="rail"><div class="brand"><div class="brand-mark"><img src="${S.logo||MOE_LOGO}" alt=""></div><div><b>${esc(s.school||'نظام شؤون الطلاب')}</b><small>نظام إدارة شؤون الطلاب</small></div></div>
@@ -827,7 +828,9 @@ function printForm(id,ctxs,opts={}){ctxs=Array.isArray(ctxs)?ctxs:[ctxs];const f
  const d=DOCS.find(x=>x.id===id);let pages=[];const c=ctxs[0]||{};
  if(id==='roster')pages=ctxs.flatMap(c=>docRoster(c.cls,false));
  if(id==='att_sheet')pages=ctxs.flatMap(c=>docRoster(c.cls,true));
- if(id==='student_full')pages=ctxs.flatMap(c=>docStudentFull(c.student));
+ if(id==='student_full'){if(!('period' in c)&&terms().length){const T=terms();return modal({title:'فترة التقرير الشامل',body:`<p class="small" style="margin-top:0">اختر الفترة التي يغطيها التقرير:</p><div class="grid" style="gap:8px">${T.map((x,i)=>`<button class="btn" data-per="${i}">${esc(x.name)}${x.name===S.settings.term?' (الحالي)':''}<span class="small muted">&nbsp;${fmtG(x.from)} – ${fmtG(x.to)}</span></button>`).join('')}<button class="btn pri" data-per="all">العام الدراسي كاملًا</button></div>`,foot:'<button class="btn" data-close>إلغاء</button>',
+  onMount:(m,close)=>$$('[data-per]',m).forEach(b=>b.onclick=()=>{const k=b.dataset.per;const p=k==='all'?null:{...T[+k]};close();printForm(id,ctxs.map(x=>({...x,period:p})),opts)})})}
+  pages=ctxs.flatMap(c=>docStudentFull(c.student,c.period||null))}
  if(id==='timetable')pages=ctxs.flatMap(c=>docTimetable(c.kind,c.key));
  if(id==='teachers_list')pages=docTeachers();
  if(id==='staff_stats')pages=ctxs.flatMap(c=>docStaffStats(c.staff));
@@ -922,13 +925,13 @@ VIEWS.attendance=el=>{const tabs=[['daily','الرصد اليومي'],['due','ا
   const canEdit=can('attendance','add');
   v.innerHTML=`<div class="card"><div class="card-h"><h2>رصد الحضور</h2><div class="row"><input type="date" class="input" id="ad-date" value="${ATT_DATE}" style="width:170px"><select class="input" id="ad-cls" style="width:220px">${clsOptions(ATT_CLS,false)}</select>
   ${canEdit?`<button class="btn" id="ad-allp">الكل حاضر</button><button class="btn pri" id="ad-save">حفظ الرصد</button>`:''}</div></div>
-  <div class="card-b small muted">${esc(dayName(ATT_DATE))} ${fmtG(ATT_DATE)} · ${L.length} طالب · ${ex.size?'<span class="pill p-ok">مرصود مسبقًا</span>':'<span class="pill p-mute">لم يُرصد بعد</span>'}</div>
+  ${(()=>{const h=holidayOn(ATT_DATE);return h?`<div class="card-b"><span class="pill p-warn">تنبيه: هذا اليوم ضمن ${esc(h.title)} حسب التقويم الدراسي</span></div>`:''})()}<div class="card-b small muted">${esc(dayName(ATT_DATE))} ${fmtG(ATT_DATE)}${(termOf(ATT_DATE)||{}).name?' · '+esc(termOf(ATT_DATE).name):''} · ${L.length} طالب · ${ex.size?'<span class="pill p-ok">مرصود مسبقًا</span>':'<span class="pill p-mute">لم يُرصد بعد</span>'}</div>
   <div class="tbl-wrap"><table class="tbl"><thead><tr><th>#</th><th>الطالب</th><th>الحالة</th><th>غياب بدون عذر (تراكمي)</th></tr></thead><tbody>${L.map((s,i)=>{const a=absStats(s.nid);return `<tr><td class="num muted">${i+1}</td><td>${esc(s.name)}</td><td><div class="seg" data-nid="${esc(s.nid)}">${[['P','حاضر','ok'],['L','متأخر','warn'],['E','غائب بعذر','info'],['U','غائب بدون عذر','bad']].map(([k,t,c])=>`<button type="button" data-s="${k}" class="${st[s.nid]===k?'on-'+c:''}" ${canEdit?'':'disabled'}>${t}</button>`).join('')}</div></td><td>${a.unN?`<span class="pill ${a.unN>=3?'p-bad':'p-warn'}">${a.unN}</span>`:'0'}</td></tr>`}).join('')||'<tr><td colspan="4" class="empty">اختر فصلًا</td></tr>'}</tbody></table></div></div>`;
   $('#ad-date',v).onchange=e=>{ATT_DATE=e.target.value;render()};$('#ad-cls',v).onchange=e=>{ATT_CLS=e.target.value;render()};
   v.onclick=e=>{const b=e.target.closest('.seg button');if(!b)return;const seg=b.parentElement;st[seg.dataset.nid]=b.dataset.s;$$('button',seg).forEach(x=>x.className='');const c={P:'ok',L:'warn',E:'info',U:'bad'}[b.dataset.s];b.className='on-'+c};
   if(canEdit){$('#ad-allp',v).onclick=()=>{L.forEach(s=>st[s.nid]='P');render()};
    $('#ad-save',v).onclick=()=>{const nids=new Set(L.map(s=>String(s.nid)));S.attendance=S.attendance.filter(a=>!(a.date===ATT_DATE&&nids.has(String(a.nid))));
-    L.forEach(s=>{const k=st[s.nid];S.attendance.push({id:uid(),date:ATT_DATE,nid:s.nid,name:s.name,grade:s.grade,cls:s.cls,status:k==='P'?'حاضر':k==='L'?'متأخر':'غائب',type:k==='E'?'بعذر':k==='U'?'بدون عذر':'',src:'يدوي',user:ME.username})});
+    L.forEach(s=>{const k=st[s.nid];S.attendance.push({id:uid(),date:ATT_DATE,term:(termOf(ATT_DATE)||{}).name||S.settings.term||'',nid:s.nid,name:s.name,grade:s.grade,cls:s.cls,status:k==='P'?'حاضر':k==='L'?'متأخر':'غائب',type:k==='E'?'بعذر':k==='U'?'بدون عذر':'',src:'يدوي',user:ME.username})});
     DB.save('attendance');const n=L.filter(s=>st[s.nid]==='U'||st[s.nid]==='E').length;audit('رصد حضور',`${ATT_CLS} ${ATT_DATE} غياب ${n}`);
     const newly=L.filter(s=>st[s.nid]==='U');toast(`تم حفظ الرصد · ${n} غائب`);render();
     if(newly.length&&can('print','print'))modal({title:'طباعة تعهدات الحضور؟',body:`<p>سُجل ${newly.length} طالب غائب بدون عذر. يمكنك طباعة تعهد الالتزام بالحضور لهم الآن.</p>`,foot:`<button class="btn print" data-y>${icon('printer')} طباعة ${newly.length} تعهد</button><button class="btn" data-close>لاحقًا</button>`,onMount:(m,close)=>{$('[data-y]',m).onclick=()=>{close();printForm('att_pledge',newly.map(s=>({student:s,dates:[ATT_DATE]})))}}})}}}
@@ -960,7 +963,7 @@ function newLeave(){if(!can('attendance','add'))return toast('لا تملك صل
  foot:`<button class="btn print" data-go disabled>${icon('printer')} حفظ وطباعة الإيصال</button><button class="btn" data-close>إلغاء</button>`,
  onMount:(el,close)=>{bindPicker($('#nl-st',el),s=>{picked=s;$('[data-go]',el).disabled=false});$('#nl-type',el).onchange=e=>$('#nl-msg',el).value=LT[+e.target.value].m;
   $('[data-go]',el).onclick=()=>{const no=Math.max(0,...S.leaves.map(l=>+l.no||0))+1;const t=LT[+$('#nl-type',el).value];
-   const lv={id:uid(),no,date:todayISO(),time:nowHM(),nid:picked.nid,name:picked.name,grade:picked.grade,cls:picked.cls,type:t.t,msg:$('#nl-msg',el).value,reason:$('#nl-reason',el).value,receiver:$('#nl-rec',el).value,period:$('#nl-per',el).value,status:'تمت الطباعة',user:ME.username};
+   const lv={id:uid(),no,date:todayISO(),term:S.settings.term||'',time:nowHM(),nid:picked.nid,name:picked.name,grade:picked.grade,cls:picked.cls,type:t.t,msg:$('#nl-msg',el).value,reason:$('#nl-reason',el).value,receiver:$('#nl-rec',el).value,period:$('#nl-per',el).value,status:'تمت الطباعة',user:ME.username};
    S.leaves.push(lv);DB.save('leaves');audit('إذن استئذان',lv.name);close();printForm('leave_pos',[{leave:lv}]);if(CUR==='attendance'||CUR==='home')render()}}})}
 function curPeriod(){const [h,m]=(S.settings.firstPeriod||'07:15').split(':').map(Number);const d=new Date();const mins=d.getHours()*60+d.getMinutes()-(h*60+m);if(mins<0)return 0;return Math.min(8,Math.floor(mins/((+S.settings.periodMin||45)+5))+1)}
 
@@ -989,7 +992,7 @@ function newIncident(pre){if(!can('behavior','add'))return toast('لا تملك 
   if(pre){$('#ni-st',el).value=pre.name}
   bindPicker($('#ni-st',el),s=>{picked=s;upd()});
   bindPicker($('#ni-rule',el),r=>{rule=S.rules.find(x=>x.id===r.id);upd()},()=>rules.filter(r=>(!$('#ni-deg',el).value||r.deg===$('#ni-deg',el).value)&&r.env===$('#ni-env',el).value).map(r=>({id:r.id,name:r.text,sub:r.deg+' · '+r.id,nid:r.id})));
-  const save=()=>{const rep=repCount(picked.nid,rule.id)+1;const b={id:uid(),date:$('#ni-date',el).value,time:nowHM(),sid:picked.id,nid:picked.nid,name:picked.name,grade:picked.grade,cls:picked.cls,rule:rule.id,deg:rule.deg,text:rule.text,env:rule.env,cat:rule.cat,rep,action:rule.acts[Math.min(rep,rule.acts.length)-1]||'',ded:rule.ded||'',notes:$('#ni-notes',el).value,notified:$('#ni-notif',el).checked?'نعم':'',user:ME.username};
+  const save=()=>{const rep=repCount(picked.nid,rule.id)+1;const b={id:uid(),date:$('#ni-date',el).value,term:(termOf($('#ni-date',el).value)||{}).name||S.settings.term||'',time:nowHM(),sid:picked.id,nid:picked.nid,name:picked.name,grade:picked.grade,cls:picked.cls,rule:rule.id,deg:rule.deg,text:rule.text,env:rule.env,cat:rule.cat,rep,action:rule.acts[Math.min(rep,rule.acts.length)-1]||'',ded:rule.ded||'',notes:$('#ni-notes',el).value,notified:$('#ni-notif',el).checked?'نعم':'',user:ME.username};
    S.behavior.push(b);DB.save('behavior');audit('رصد مخالفة',`${b.name} – ${b.rule}`);close();if(CUR==='behavior'||CUR==='home')render();toast('تم رصد المخالفة');return b};
   $('[data-save]',el).onclick=save;$('[data-save-print]',el).onclick=()=>{const b=save();printForm('notice',[{student:stFind(b),incident:b}])}}})}
 function incidentForms(b){const st=stFind(b)||{name:b.name,grade:b.grade,cls:b.cls,nid:b.nid};const r=ruleOf(b.rule);const deg=['الأولى','الثانية','الثالثة','الرابعة','الخامسة'].indexOf(b.deg);
@@ -1025,7 +1028,7 @@ VIEWS.staff=el=>{const list=()=>S.staff.filter(s=>!STF_Q||norm(s.name).includes(
 let SCH_KIND='cls',SCH_KEY='';
 VIEWS.schedule=el=>{const teachers=[...new Set(S.schedule.map(r=>r.teacher))].sort();if(!SCH_KEY)SCH_KEY=SCH_KIND==='cls'?(classes()[0]||{}).cls||'':teachers[0]||'';
  const days=['الأحد','الاثنين','الثلاثاء','الأربعاء','الخميس'];const rows=S.schedule.filter(r=>SCH_KIND==='cls'?String(r.cls)===String(SCH_KEY):r.teacher===SCH_KEY);const maxP=Math.max(7,...rows.map(r=>+r.period||0));
- const t=todayISO();const cal=S.calendar.slice().sort((a,b)=>a.from<b.from?-1:1);
+ const t=todayISO();const cy=terms().length?addDays(terms()[0].from,-30):'';const cal=S.calendar.filter(c=>!cy||(c.to||c.from||'')>=cy).sort((a,b)=>a.from<b.from?-1:1);
  el.innerHTML=`<div class="card"><div class="card-h"><h2>الجدول الدراسي</h2><div class="row"><div class="seg"><button class="${SCH_KIND==='cls'?'on-info':''}" data-k="cls">حسب الفصل</button><button class="${SCH_KIND==='t'?'on-info':''}" data-k="t">حسب المعلم</button></div>
  <select class="input" id="sc-key" style="width:230px">${SCH_KIND==='cls'?clsOptions(SCH_KEY,false):teachers.map(x=>`<option ${x===SCH_KEY?'selected':''}>${esc(x)}</option>`).join('')}</select>${can('schedule','print')?`<button class="btn print" id="sc-p">${icon('printer')} طباعة</button>`:''}</div></div>
  <div class="tbl-wrap"><table class="tbl"><thead><tr><th>اليوم</th>${Array.from({length:maxP},(_,i)=>`<th style="text-align:center">الحصة ${i+1}</th>`).join('')}</tr></thead><tbody>${days.map(d=>`<tr><th>${d}</th>${Array.from({length:maxP},(_,i)=>{const r=rows.find(x=>x.day===d&&+x.period===i+1);return `<td style="text-align:center;min-width:110px">${r?`<b>${esc(r.subject)}</b><div class="small muted">${esc(SCH_KIND==='cls'?r.teacher:'فصل '+r.cls)}</div>`:'<span class="muted">—</span>'}</td>`}).join('')}</tr>`).join('')}</tbody></table></div>
@@ -1052,12 +1055,12 @@ VIEWS.reports=el=>{const inR=d=>d>=REP_FROM&&d<=REP_TO;
  const rate=att.length?Math.round((1-(un.length+ex.length)/att.length)*1000)/10:0;
  const byCls=classes().map(c=>{const a=att.filter(x=>String(x.cls)===String(c.cls));const ab=a.filter(x=>x.status==='غائب').length;return{c,ab,rate:a.length?Math.round((1-ab/a.length)*1000)/10:null}});
  const top=students().map(s=>({s,n:un.filter(a=>String(a.nid)===String(s.nid)).length})).filter(x=>x.n).sort((a,b)=>b.n-a.n);
- el.innerHTML=`<div class="card card-b row"><b>الفترة</b><input type="date" class="input" id="rp-f" value="${REP_FROM}" style="width:160px"><span>إلى</span><input type="date" class="input" id="rp-t" value="${REP_TO}" style="width:160px"><span class="spacer"></span><span class="chip">${days} يوم دراسي مرصود</span></div>
+ el.innerHTML=`<div class="card card-b row"><b>الفترة</b>${terms().map((x,i)=>`<button class="btn sm ${REP_FROM===x.from&&REP_TO===x.to?'pri':''}" data-rp-t="${i}">${esc(x.name)}</button>`).join('')}${terms().length?`<button class="btn sm ${REP_FROM===terms()[0].from&&REP_TO===terms()[terms().length-1].to?'pri':''}" data-rp-t="all">العام كاملًا</button>`:''}<input type="date" class="input" id="rp-f" value="${REP_FROM}" style="width:160px"><span>إلى</span><input type="date" class="input" id="rp-t" value="${REP_TO}" style="width:160px"><span class="spacer"></span><span class="chip">${days} يوم دراسي مرصود</span></div>
  <div class="kpis">${kpi(rate+'%','نسبة الحضور')}${kpi(un.length,'غياب بدون عذر',un.length>0)}${kpi(ex.length,'غياب بعذر')}${kpi(lt.length,'تأخر')}${kpi(beh.length,'مخالفة سلوكية')}${kpi(lv.length,'استئذان')}</div>
  <div class="grid g2"><div class="card"><div class="card-h"><h2>نسبة الحضور حسب الفصل</h2></div><div class="card-b bars">${byCls.map(x=>`<div class="bar"><span>${esc(x.c.grade.replace('الثانوي','').trim())} · ${esc(x.c.cls)}</span><div class="track"><div class="fill" style="width:${x.rate??0}%"></div></div><b class="num">${x.rate??'—'}%</b></div>`).join('')||'<div class="empty">لا بيانات</div>'}</div></div>
  <div class="card"><div class="card-h"><h2>التقارير الجاهزة</h2></div><div class="card-b list">${[['abs','تقرير الغياب التراكمي للطلاب'],['absday','تقرير الغياب اليومي (تفصيلي)'],['beh','تقرير المخالفات السلوكية'],['lv','تقرير الاستئذان'],['due','تقرير الإجراءات المستحقة'],['stats','الإحصائيات المدرسية للفترة']].map(([k,t])=>`<div class="it"><span style="flex:1">${t}</span>${can('reports','print')?`<button class="btn sm print" data-rp="${k}">${icon('printer')} طباعة</button>`:''}${can('reports','export')?`<button class="btn sm" data-rx="${k}">${icon('download')} Excel</button>`:''}</div>`).join('')}</div></div></div>
  <div class="card"><div class="card-h"><h2>الأكثر غيابًا بدون عذر في الفترة</h2></div><div class="tbl-wrap"><table class="tbl"><thead><tr><th>#</th><th>الطالب</th><th>الصف</th><th>أيام الغياب</th></tr></thead><tbody>${top.slice(0,10).map((x,i)=>`<tr><td class="num">${i+1}</td><td>${esc(x.s.name)}</td><td>${esc(x.s.grade)} · ${esc(x.s.cls)}</td><td><span class="pill p-bad">${x.n}</span></td></tr>`).join('')||'<tr><td colspan="4" class="empty">لا يوجد</td></tr>'}</tbody></table></div></div>`;
- $('#rp-f',el).onchange=e=>{REP_FROM=e.target.value;render()};$('#rp-t',el).onchange=e=>{REP_TO=e.target.value;render()};
+ $$('[data-rp-t]',el).forEach(b=>b.onclick=()=>{const T=terms(),k=b.dataset.rpT;if(k==='all'){REP_FROM=T[0].from;REP_TO=T[T.length-1].to}else{REP_FROM=T[+k].from;REP_TO=T[+k].to}render()});$('#rp-f',el).onchange=e=>{REP_FROM=e.target.value;render()};$('#rp-t',el).onchange=e=>{REP_TO=e.target.value;render()};
  const meta=`<span>الفترة: <b>${fmtG(REP_FROM)} – ${fmtG(REP_TO)}</b></span>`;
  const R={abs:()=>['تقرير الغياب التراكمي',['م','الطالب','الصف','الفصل','بدون عذر','بعذر','تأخر'],top.length?students().map(s=>({s,u:un.filter(a=>String(a.nid)===String(s.nid)).length,e:ex.filter(a=>String(a.nid)===String(s.nid)).length,l:lt.filter(a=>String(a.nid)===String(s.nid)).length})).filter(x=>x.u+x.e+x.l).sort((a,b)=>b.u-a.u).map((x,i)=>[i+1,x.s.name,x.s.grade,x.s.cls,x.u,x.e,x.l]):[]],
   absday:()=>['تقرير الغياب اليومي',['م','الطالب','الصف','الفصل','التاريخ','اليوم','النوع'],[...un,...ex].sort((a,b)=>a.date<b.date?-1:1).map((a,i)=>[i+1,a.name,a.grade,a.cls,fmtG(a.date),dayName(a.date),a.type||'بدون عذر'])],
@@ -1070,10 +1073,10 @@ VIEWS.reports=el=>{const inR=d=>d>=REP_FROM&&d<=REP_TO;
 
 // ---------- الإدارة ----------
 let ADMIN_TAB='users';
-VIEWS.admin=el=>{const tabs=[['users','المستخدمون'],['roles','الأدوار والصلاحيات'],['settings','إعدادات المدرسة'],['year','العام الدراسي الجديد'],['import','الاستيراد والنسخ الاحتياطي'],['audit','سجل العمليات']];
+VIEWS.admin=el=>{const tabs=[['users','المستخدمون'],['roles','الأدوار والصلاحيات'],['settings','إعدادات المدرسة'],['year','العام والفصول الدراسية'],['import','الاستيراد والنسخ الاحتياطي'],['audit','سجل العمليات']];
  el.innerHTML=`<div class="tabs">${tabs.map(([k,t])=>`<button class="${ADMIN_TAB===k?'on':''}" data-t="${k}">${t}</button>`).join('')}</div><div id="ad-v"></div>`;
  $$('[data-t]',el).forEach(b=>b.onclick=()=>{ADMIN_TAB=b.dataset.t;render()});const v=$('#ad-v',el);const W=can('admin','edit');
- if(ADMIN_TAB==='year')yearTab(v);
+ if(ADMIN_TAB==='year'){yearTab(v);v.insertAdjacentHTML('afterbegin',termsCardHTML());bindTermsCard(v)}
  if(ADMIN_TAB==='users'){v.innerHTML=`${CLOUD_ON?`<div class="card card-b grid"><b>رابط الدخول للمستخدمين</b><span class="small muted">أرسل هذا الرابط للمعلمين والموظفين مرة واحدة (واتساب أو بريد). يفتحونه من الجوال أو الكمبيوتر، ثم يدخلون بأسماء المستخدمين التي تنشئها لهم هنا.</span><div class="row"><input class="input" id="inv" dir="ltr" readonly value="${esc(inviteLink())}" style="flex:1;min-width:200px"><button class="btn pri" id="inv-c" type="button">نسخ الرابط</button></div></div>`:''}<div class="card"><div class="card-h"><h2>حسابات المستخدمين</h2>${W?`<button class="btn pri" id="us-add">${icon('plus')} مستخدم جديد</button>`:''}</div><div class="tbl-wrap"><table class="tbl"><thead><tr><th>الاسم</th><th>اسم المستخدم</th><th>الدور</th><th>نطاق الفصول</th><th>الحالة</th><th>آخر دخول</th><th></th></tr></thead><tbody>${S.users.map(u=>`<tr><td><b>${esc(u.name)}</b></td><td dir="ltr" style="text-align:right">${esc(u.username)}</td><td>${esc((S.roles.find(r=>r.id===u.role)||{}).name||u.role)}</td><td class="small">${u.scope&&u.scope.length?esc(u.scope.join('، ')):'كل الفصول'}</td><td>${u.status==='نشط'?'<span class="pill p-ok">نشط</span>':'<span class="pill p-mute">موقوف</span>'}${u.lockUntil>Date.now()?' <span class="pill p-warn">مقفل</span>':''}</td><td class="small num">${u.last?new Date(u.last).toLocaleString('ar-SA-u-nu-latn'):'—'}</td><td class="act">${W?`<button class="btn sm" data-u="${u.id}">${icon('edit')} تعديل</button>`:''}</td></tr>`).join('')}</tbody></table></div></div>`;
   if($('#inv-c',v))$('#inv-c',v).onclick=()=>{const i=$('#inv',v);i.select();(navigator.clipboard?navigator.clipboard.writeText(i.value):Promise.reject()).then(()=>toast('تم نسخ الرابط')).catch(()=>{try{document.execCommand('copy');toast('تم نسخ الرابط')}catch(e){}})};
   if(W){$('#us-add',v).onclick=()=>editUser();v.onclick=e=>{const b=e.target.closest('[data-u]');if(b)editUser(S.users.find(u=>u.id===b.dataset.u))}}}
@@ -1087,12 +1090,12 @@ VIEWS.admin=el=>{const tabs=[['users','المستخدمون'],['roles','الأد
   v.innerHTML=`<div class="card"><div class="card-h"><h2>بيانات المدرسة</h2>${W?'<button class="btn pri" id="se-save">حفظ الإعدادات</button>':''}</div><div class="card-b"><div class="form-grid">${F.map(([k,l])=>`<div class="field"><label for="se-${k}">${l}</label><input class="input" id="se-${k}" value="${esc(s[k]??'')}" ${W?'':'disabled'}></div>`).join('')}
   <div class="field"><label for="se-date">صيغة التاريخ في النماذج</label><select class="input" id="se-date">${[['g','ميلادي'],['h','هجري'],['both','ميلادي وهجري']].map(([k,t])=>`<option value="${k}" ${s.dateMode===k?'selected':''}>${t}</option>`).join('')}</select></div>
   <div class="field"><label for="se-pos">عرض ورق الإيصالات</label><select class="input" id="se-pos"><option value="80" ${+s.posWidth===80?'selected':''}>80 مم</option><option value="58" ${+s.posWidth===58?'selected':''}>58 مم</option></select></div>
-  <div class="field"><label for="se-absT">حدود تنبيه الغياب (مفصولة بفاصلة)</label><input class="input" id="se-absT" value="${esc(s.absT.join(','))}"></div>
+  <div class="field"><label for="se-scope">احتساب عدادات الغياب وتكرار المخالفات</label><select class="input" id="se-scope"><option value="year" ${s.countScope!=='term'?'selected':''}>على مستوى العام الدراسي كاملًا</option><option value="term" ${s.countScope==='term'?'selected':''}>على مستوى الفصل الدراسي الحالي</option></select></div><div class="field"><label for="se-absT">حدود تنبيه الغياب (مفصولة بفاصلة)</label><input class="input" id="se-absT" value="${esc(s.absT.join(','))}"></div>
   <div class="field"><label for="se-logo">شعار مخصص للمطبوعات (اختياري)</label><input type="file" class="input" id="se-logo" accept="image/*"></div></div></div></div>
   <div class="card"><div class="card-h"><h2>نصوص إجراءات الغياب في النماذج</h2></div><div class="card-b form-grid">${Object.entries(s.absU).map(([k,t])=>`<div class="field"><label for="se-u-${k}">بدون عذر – ${k.replace('_',' ')} أيام</label><textarea class="input" id="se-u-${k}">${esc(t)}</textarea></div>`).join('')}${Object.entries(s.absE).map(([k,t])=>`<div class="field"><label for="se-e-${k}">بعذر – ${k} أيام</label><textarea class="input" id="se-e-${k}">${esc(t)}</textarea></div>`).join('')}</div></div>
   <div class="card"><div class="card-h"><h2>أنواع الاستئذان ونصوصها</h2></div><div class="card-b form-grid">${s.leaveTypes.map((x,i)=>`<div class="field"><label for="se-l-${i}">${esc(x.t)}</label><textarea class="input" id="se-l-${i}">${esc(x.m)}</textarea></div>`).join('')}</div></div>`;
   const lg=$('#se-logo',v);lg.onchange=()=>{const f=lg.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{S.logo=r.result;DB.save('logo');toast('تم تحديث الشعار');render()};r.readAsDataURL(f)};
-  if(W)$('#se-save',v).onclick=()=>{F.forEach(([k])=>s[k]=$('#se-'+k,v).value.trim());s.dateMode=$('#se-date',v).value;s.posWidth=+$('#se-pos',v).value;const t=$('#se-absT',v).value.split(/[,،]/).map(Number).filter(Boolean);if(t.length)s.absT=t;
+  if(W)$('#se-save',v).onclick=()=>{F.forEach(([k])=>s[k]=$('#se-'+k,v).value.trim());s.dateMode=$('#se-date',v).value;s.posWidth=+$('#se-pos',v).value;s.countScope=$('#se-scope',v).value;const t=$('#se-absT',v).value.split(/[,،]/).map(Number).filter(Boolean);if(t.length)s.absT=t;
    Object.keys(s.absU).forEach(k=>s.absU[k]=$('#se-u-'+k,v).value);Object.keys(s.absE).forEach(k=>s.absE[k]=$('#se-e-'+k,v).value);s.leaveTypes.forEach((x,i)=>x.m=$('#se-l-'+i,v).value);DB.save('settings');audit('تعديل الإعدادات');toast('تم حفظ الإعدادات');render()}}
  if(ADMIN_TAB==='import'){v.innerHTML=`${CLOUD_ON?`<div class="card card-b row" style="border-color:var(--ok)">${Cloud.chip()}<span class="small">كل تعديل يُحفظ فورًا على الخادم، ويظهر لبقية المستخدمين خلال ثوانٍ. تُحفظ آخر 20 نسخة من كل جزء على الخادم.</span></div>`:''}<div class="card" ${CLOUD_ON?'hidden':''} style="border-color:${Sync.state==='on'?'var(--ok)':'var(--warn)'}"><div class="card-h"><h2>الحفظ التلقائي المباشر</h2>${Sync.chip()}</div><div class="card-b grid">
   <p class="small" style="margin:0">عند ربط مجلد، يُحفظ كل تعديل فورًا في ملف <b dir="ltr">sims-data.json</b> داخل المجلد، مع نسخة يومية في مجلد <b dir="ltr">backups</b> (آخر 30 يومًا). أي نسخة من البرنامج أو متصفح آخر يُربط بالمجلد نفسه يقرأ أحدث البيانات تلقائيًا. ضع المجلد داخل OneDrive أو Google Drive أو مجلد شبكة المدرسة لتصل البيانات إلى أجهزتك الأخرى تلقائيًا.</p>
@@ -1107,7 +1110,7 @@ VIEWS.admin=el=>{const tabs=[['users','المستخدمون'],['roles','الأد
    const keys=Object.keys(R);if(!keys.length){$('#im-r',v).innerHTML='<div class="err">لم يُعثر على أوراق SIMS المعروفة في الملف.</div>';return}
    $('#im-r',v).innerHTML=`<table class="tbl"><thead><tr><th><input type="checkbox" id="im-all" checked></th><th>البيانات</th><th>العدد في الملف</th><th>الحالي</th></tr></thead><tbody>${keys.map(k=>`<tr><td><input type="checkbox" data-k="${k}" checked></td><td>${IMPORT_LABELS[k]||k}</td><td class="num">${Array.isArray(R[k])?R[k].length:'✓'}</td><td class="num">${Array.isArray(S[k])?S[k].length:''}</td></tr>`).join('')}</tbody></table><p class="small muted">سيُستبدل كل جزء محدد بما في الملف.</p><button class="btn pri" id="im-go">اعتماد الاستيراد</button>`;
    $('#im-all',v).onchange=ev=>$$('[data-k]',v).forEach(c=>c.checked=ev.target.checked);
-   $('#im-go',v).onclick=()=>{const done=[];$$('[data-k]:checked',v).forEach(c=>{const k=c.dataset.k;if(k==='settings')Object.assign(S.settings,R.settings);else S[k]=R[k];DB.save(k);done.push(IMPORT_LABELS[k])});audit('استيراد ملف',f.name+': '+done.join('، '));toast('تم الاستيراد: '+done.length+' أجزاء');render()}}catch(err){console.error(err);$('#im-r',v).innerHTML=`<div class="err">تعذرت قراءة الملف: ${esc(err.message)}</div>`}};rd.readAsArrayBuffer(f)};
+   $('#im-go',v).onclick=()=>{const done=[];$$('[data-k]:checked',v).forEach(c=>{const k=c.dataset.k;if(k==='settings')Object.assign(S.settings,R.settings);else S[k]=R[k];if(k==='calendar'){delete S.settings.cal1448;DB.save('settings')}DB.save(k);done.push(IMPORT_LABELS[k])});audit('استيراد ملف',f.name+': '+done.join('، '));toast('تم الاستيراد: '+done.length+' أجزاء');render()}}catch(err){console.error(err);$('#im-r',v).innerHTML=`<div class="err">تعذرت قراءة الملف: ${esc(err.message)}</div>`}};rd.readAsArrayBuffer(f)};
   $('#bk-save',v).onclick=()=>{const data={};COLLS.forEach(k=>data[k]=S[k]);const blob=new Blob([JSON.stringify({app:'sims-web',v:1,at:new Date().toISOString(),data})],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`نسخة_احتياطية_${todayISO()}.json`;document.body.appendChild(a);a.click();a.remove();audit('نسخة احتياطية')};
   $('#bk-load',v).onchange=e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{try{const j=JSON.parse(r.result);if(j.app!=='sims-web')throw new Error('ملف غير مطابق');confirmBox('ستُستبدل كل البيانات الحالية بمحتوى النسخة. متابعة؟',()=>{COLLS.forEach(k=>{if(k in j.data){S[k]=j.data[k];DB.save(k)}});audit('استعادة نسخة');ME=S.users.find(u=>u.username===ME.username)||null;render();toast('تمت الاستعادة')},'استعادة')}catch(err){toast('تعذرت قراءة النسخة: '+err.message,1)}};r.readAsText(f)};
   $('#bk-wipe',v).onclick=()=>confirmBox('سيُحذف كل شيء بما في ذلك المستخدمون. لا يمكن التراجع.',async()=>{await DB.wipe();location.reload()},'مسح نهائي')}
@@ -1202,6 +1205,50 @@ function importNewStudents(){const first=gradeLadder()[0]||'';
     $('#ns-r',m).innerHTML=`<div class="row"><span class="pill p-ok">${rows.length} طالب جديد</span>${dup?`<span class="pill p-mute">${dup} مسجل مسبقًا (سيُتجاوز)</span>`:''}</div>`;$('[data-go]',m).disabled=!rows.length}catch(err){$('#ns-r',m).innerHTML=`<div class="err">تعذرت قراءة الملف: ${esc(err.message)}</div>`}};r.readAsArrayBuffer(f)};
   $('[data-go]',m).onclick=()=>{const g=$('#ns-g',m).value.trim(),c=$('#ns-c',m).value.trim();rows.forEach(x=>S.students.push({id:uid(),nid:x.nid,name:x.name,grade:x.grade||g,cls:x.cls||c,sec:String(x.cls||c).slice(1),guardian:x.guardian,phone:x.phone,status:'نشط',stage:S.settings.stage,joined:S.settings.year||''}));
    DB.save('students');audit('إضافة طلاب مستجدين',rows.length+' طالب');close();render();toast(`أُضيف ${rows.length} طالبًا`)}}})}
+
+// ===================== semesters (two or more terms inside one academic year) =====================
+function terms(){return Array.isArray(S.settings.terms)?S.settings.terms:[]}
+function currentTerm(){return terms().find(t=>t.name===S.settings.term)||null}
+function termOf(iso){return terms().find(t=>iso>=t.from&&iso<=t.to)||null}
+// range used by absence counters and repetition counts: whole year (default) or the current term only
+function countRange(){if(S.settings.countScope==='term'){const t=currentTerm();if(t)return[t.from,t.to]}return[undefined,undefined]}
+function holidayOn(iso){return (S.calendar||[]).find(c=>/إجازة/.test((c.type||'')+(c.title||''))&&c.from&&iso>=c.from&&iso<=(c.to||c.from))||null}
+function termsCardHTML(){const W=can('admin','edit'),T=terms(),cur=S.settings.term,t=todayISO();
+ return `<div class="card"><div class="card-h"><h2>الفصول الدراسية للعام ${esc(S.settings.year||'')}</h2><span class="chip">الفصل الحالي: <b>${esc(cur||'—')}</b></span>${W?`<button class="btn pri" id="tm-add">${icon('plus')} إضافة فصل دراسي</button>`:''}</div>
+ <div class="tbl-wrap"><table class="tbl"><thead><tr><th>الفصل</th><th>من</th><th>إلى</th><th>المدة</th><th>الحالة</th><th></th></tr></thead><tbody>${T.map((x,i)=>{const wk=Math.round((new Date(x.to)-new Date(x.from))/864e5/7);const live=t>=x.from&&t<=x.to;
+  return `<tr><td><b>${esc(x.name)}</b>${x.name===cur?' <span class="pill p-ok">الحالي</span>':''}</td><td class="num">${fmtG(x.from)}<div class="small muted">${fmtH(x.from)}</div></td><td class="num">${fmtG(x.to)}<div class="small muted">${fmtH(x.to)}</div></td><td class="num">${wk} أسبوعًا</td><td>${t<x.from?'<span class="pill p-info">قادم</span>':t>x.to?'<span class="pill p-mute">انتهى</span>':'<span class="pill p-ok">جارٍ</span>'}</td>
+  <td class="act">${W?`${x.name!==cur?`<button class="btn sm" data-tm-set="${i}">اعتماده فصلًا حاليًا</button>`:''}<button class="btn sm ghost" data-tm-ed="${i}">${icon('edit')}</button>`:''}</td></tr>`}).join('')||'<tr><td colspan="6" class="empty">لم تُضف فصول دراسية بعد</td></tr>'}</tbody></table></div>
+ <div class="card-b small muted">كل غياب ومخالفة واستئذان يُسجَّل بفصله الدراسي تلقائيًا. عدادات الغياب وتكرار المخالفات تُحتسب على مستوى <b>${S.settings.countScope==='term'?'الفصل الدراسي الحالي':'العام الدراسي كاملًا'}</b> (يُغيَّر من «إعدادات المدرسة»). وفي التقارير أزرار لاختيار فترة كل فصل مباشرة.</div></div>`}
+function bindTermsCard(v){const add=$('#tm-add',v);if(add)add.onclick=()=>editTerm();
+ $$('[data-tm-ed]',v).forEach(b=>b.onclick=()=>editTerm(+b.dataset.tmEd));
+ $$('[data-tm-set]',v).forEach(b=>b.onclick=()=>{const x=terms()[+b.dataset.tmSet];confirmBox(`اعتماد «${x.name}» فصلًا دراسيًا حاليًا؟ تبقى كل بيانات الفصول السابقة محفوظة، وتُسجَّل الحركات الجديدة على هذا الفصل.`,()=>{S.settings.term=x.name;DB.save('settings');audit('تغيير الفصل الدراسي',x.name);render();toast('الفصل الحالي: '+x.name)},'اعتماد')})}
+function editTerm(i){const T=terms().slice();const x=i==null?{name:T.length?'الفصل الدراسي '+(['الأول','الثاني','الثالث','الرابع'][T.length]||(T.length+1)):'الفصل الدراسي الأول',from:T.length?addDays(T[T.length-1].to,1):todayISO(),to:''}:T[i];
+ modal({title:i==null?'إضافة فصل دراسي':'تعديل الفصل الدراسي',body:`<div class="form-grid"><div class="field"><label for="tm-n">اسم الفصل</label><input class="input" id="tm-n" value="${esc(x.name)}"></div><div class="field"><label for="tm-f">يبدأ</label><input type="date" class="input" id="tm-f" value="${esc(x.from)}"></div><div class="field"><label for="tm-t">ينتهي</label><input type="date" class="input" id="tm-t" value="${esc(x.to)}"></div></div>${i==null?'<label class="row small"><input type="checkbox" id="tm-cur" checked> اعتماده فصلًا حاليًا فور إضافته</label>':''}`,
+  foot:`<button class="btn pri" data-go>حفظ</button>${i!=null?'<button class="btn danger" data-del>حذف</button>':''}<button class="btn" data-close>إلغاء</button>`,
+  onMount:(m,close)=>{$('[data-go]',m).onclick=()=>{const n=$('#tm-n',m).value.trim(),f=$('#tm-f',m).value,t=$('#tm-t',m).value;if(!n||!f||!t)return toast('أكمل الاسم وتاريخي البداية والنهاية',1);if(t<f)return toast('تاريخ النهاية قبل البداية',1);
+    if(T.some((y,j)=>j!==i&&y.name===n))return toast('يوجد فصل بهذا الاسم',1);const old=i!=null?T[i].name:null;const nx={name:n,from:f,to:t};if(i==null)T.push(nx);else T[i]=nx;T.sort((a,b)=>a.from<b.from?-1:1);
+    S.settings.terms=T;if((i==null&&$('#tm-cur',m).checked)||(old&&S.settings.term===old))S.settings.term=n;DB.save('settings');audit(i==null?'إضافة فصل دراسي':'تعديل فصل دراسي',n);close();render();toast('تم الحفظ')};
+   const d=$('[data-del]',m);if(d)d.onclick=()=>{close();confirmBox(`حذف «${x.name}» من قائمة الفصول؟ لا تُحذف أي سجلات.`,()=>{S.settings.terms=T.filter((_,j)=>j!==i);if(S.settings.term===x.name)S.settings.term=(S.settings.terms[0]||{}).name||'';DB.save('settings');render()},'حذف')}}})}
+// official MoE calendar 1448هـ (2026/2027) – seeded once, idempotent by fixed ids
+const MOE_CAL_1448=[
+ ['عودة','عودة منسوبي الهيئة الإدارية والمشرفين التربويين','2026-08-11','2026-08-11','1448/02/28','1448/02/28'],
+ ['عودة','عودة المعلمين الممارسين للتدريس','2026-08-16','2026-08-16','1448/03/03','1448/03/03'],
+ ['بداية الدراسة','بداية العام الدراسي — الفصل الدراسي الأول','2026-08-23','2026-08-23','1448/03/10','1448/03/10'],
+ ['إجازة','إجازة اليوم الوطني','2026-09-23','2026-09-26','1448/04/12','1448/04/15'],
+ ['إجازة','إجازة الخريف','2026-11-20','2026-11-28','1448/06/10','1448/06/18'],
+ ['إجازة','إجازة منتصف العام الدراسي','2027-01-08','2027-01-16','1448/07/30','1448/08/08'],
+ ['بداية الدراسة','بداية الفصل الدراسي الثاني','2027-01-17','2027-01-17','1448/08/09','1448/08/09'],
+ ['إجازة','إجازة يوم التأسيس','2027-02-19','2027-02-22','1448/09/12','1448/09/15'],
+ ['إجازة','إجازة عيد الفطر','2027-02-26','2027-03-13','1448/09/19','1448/10/05'],
+ ['إجازة','إجازة عيد الأضحى','2027-05-07','2027-05-22','1448/12/01','1448/12/16'],
+ ['إجازة','بداية إجازة نهاية العام الدراسي','2027-06-24','2027-06-24','1449/01/19','1449/01/19'],
+ ['بداية الدراسة','بداية العام الدراسي 1449–1450هـ','2027-08-22','2027-08-22','1449/03/20','1449/03/20']];
+const MOE_TERMS_1448=[{name:'الفصل الدراسي الأول',from:'2026-08-23',to:'2027-01-07'},{name:'الفصل الدراسي الثاني',from:'2027-01-17',to:'2027-06-23'}];
+function seedMoE1448(){if(!ME||!can('admin','edit')||S.settings.cal1448)return;if(CLOUD_ON&&typeof Cloud!=='undefined'&&Cloud.state!=='on')return;
+ if(!Array.isArray(S.calendar))S.calendar=[];const have=new Set(S.calendar.map(c=>c.id));
+ MOE_CAL_1448.forEach(([type,title,from,to,hFrom,hTo],i)=>{const id='moe1448-'+(i+1);if(!have.has(id)&&!S.calendar.some(c=>c.from===from&&(c.to||c.from)===to))S.calendar.push({id,type,title,from,to,hFrom:hFrom+'هـ',hTo:hTo+'هـ',students:/إجازة|بداية/.test(type)?'نعم':''})});
+ if(!terms().length){S.settings.terms=MOE_TERMS_1448.map(t=>({...t}));if(!S.settings.term||!terms().some(t=>t.name===S.settings.term))S.settings.term=(termOf(todayISO())||MOE_TERMS_1448[0]).name}
+ S.settings.cal1448=1;DB.save('calendar');DB.save('settings');audit('إضافة التقويم الدراسي','1448هـ')}
 
 // ===================== automatic live copy in a folder on disk =====================
 // The user links a folder once. Every change is written to <folder>/sims-data.json within ~1s,
